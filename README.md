@@ -202,7 +202,7 @@ netsim-router-lab/
 
 1. **Clonar el repositorio:**
    ```bash
-   git clone https://github.com/tu-usuario/netsim-router-lab.git
+   git clone https://github.com/unfantasmaenelsistema/netsim-router-lab.git
    cd netsim-router-lab
    ```
 
