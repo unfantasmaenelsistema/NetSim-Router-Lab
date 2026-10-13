@@ -118,7 +118,7 @@ export const Header: React.FC<Props> = ({
   ];
 
   return (
-    <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-40 shadow-xl">
+    <header className="bg-slate-900 border-b border-slate-800 md:sticky md:top-0 z-40 shadow-xl">
       {/* Top tier brand bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-4">
         {/* Logo and Brand Link */}
@@ -126,12 +126,12 @@ export const Header: React.FC<Props> = ({
           href="https://www.unfantasmaenelsistema.com/"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-3 group transition-transform hover:scale-[1.01]"
+          className="flex items-center gap-3 group transition-transform hover:scale-[1.01] min-w-0"
           title="Visitar Un Fantasma en el Sistema (unfantasmaenelsistema.com)"
         >
           <div className="relative w-11 h-11 shrink-0 rounded-xl bg-slate-950 border border-slate-750 flex items-center justify-center p-1 shadow-inner overflow-hidden group-hover:border-sky-500/60 transition-colors">
             <img
-              src="/icono.png"
+              src={`${import.meta.env.BASE_URL}icono.png`}
               alt="Logo Un Fantasma en el Sistema"
               className="w-full h-full object-contain aspect-square"
               referrerPolicy="no-referrer"
@@ -142,7 +142,7 @@ export const Header: React.FC<Props> = ({
               <h1 className="text-base sm:text-lg font-bold text-white tracking-tight group-hover:text-sky-300 transition-colors">
                 NetSim Router Lab
               </h1>
-              <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800">
+              <span className="hidden sm:inline text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800">
                 Simulador Didáctico
               </span>
             </div>
@@ -157,7 +157,7 @@ export const Header: React.FC<Props> = ({
         </a>
 
         {/* Action badges and controls */}
-        <div className="flex items-center gap-2.5 sm:gap-4">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 min-w-0">
           {/* External website link button */}
           <a
             href="https://www.unfantasmaenelsistema.com/"
@@ -167,7 +167,7 @@ export const Header: React.FC<Props> = ({
             title="Ir a unfantasmaenelsistema.com"
           >
             <img
-              src="/icono.png"
+              src={`${import.meta.env.BASE_URL}icono.png`}
               alt="Icono"
               className="w-4 h-4 object-contain aspect-square shrink-0"
               referrerPolicy="no-referrer"

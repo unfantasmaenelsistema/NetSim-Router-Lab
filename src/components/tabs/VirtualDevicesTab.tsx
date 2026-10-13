@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { VirtualDevice, ConnectionType, DeviceActivity, DeviceType, RouterConfig } from '../../types/router';
 import { Laptop, Tv, Smartphone, ShieldAlert, Plus, Radio, Network, Wifi, Play, Pause, Flame, RefreshCw } from 'lucide-react';
 
@@ -8,6 +8,13 @@ interface Props {
   onAddDevice: (newDevice: VirtualDevice) => void;
   onDeleteDevice: (id: string) => void;
   config: RouterConfig;
+}
+
+/** Medio por defecto al reconectar un equipo del que no se recuerda la conexión anterior */
+function defaultConnectionFor(type: DeviceType): ConnectionType {
+  if (type === 'pc_gamer' || type === 'console') return 'ethernet_lan1';
+  if (type === 'iot_camera') return 'wifi_24g';
+  return 'wifi_5g';
 }
 
 export const VirtualDevicesTab: React.FC<Props> = ({
@@ -40,6 +47,9 @@ export const VirtualDevicesTab: React.FC<Props> = ({
     }
   };
 
+  // Último medio de conexión de cada equipo antes de desconectarlo
+  const lastConnectionRef = useRef<Record<string, ConnectionType>>({});
+
   const handleCreateCustom = () => {
     if (!customName.trim()) return;
     const generatedMac = customMac.trim() || `02:50:${Math.floor(Math.random() * 89 + 10)}:${Math.floor(Math.random() * 89 + 10)}:${Math.floor(Math.random() * 89 + 10)}:${Math.floor(Math.random() * 89 + 10)}`;
@@ -49,7 +59,7 @@ export const VirtualDevicesTab: React.FC<Props> = ({
       type: customType,
       connectionType: customConn,
       mac: generatedMac.toUpperCase(),
-      ip: `192.168.1.${Math.floor(Math.random() * 80 + 110)}`,
+      ip: '0.0.0.0', // el servidor DHCP del router le asignará IP en el siguiente ciclo
       isOnline: customConn !== 'disconnected',
       currentActivity: 'web_browsing',
       demandDownloadMbps: 8,
@@ -247,16 +257,18 @@ export const VirtualDevicesTab: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    const newConn: ConnectionType = device.isOnline ? 'disconnected' : 'wifi_5g';
-                    onUpdateDevice(device.id, {
-                      connectionType: newConn,
-                      isOnline: !device.isOnline
-                    });
+                    // Se reconecta por el mismo medio que tenía (el PC por cable no acaba en Wi-Fi)
+                    if (device.connectionType === 'disconnected') {
+                      onUpdateDevice(device.id, { connectionType: lastConnectionRef.current[device.id] || defaultConnectionFor(device.type) });
+                    } else {
+                      lastConnectionRef.current[device.id] = device.connectionType;
+                      onUpdateDevice(device.id, { connectionType: 'disconnected' });
+                    }
                   }}
                   className="text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer text-[11px]"
                 >
-                  {device.isOnline ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-emerald-400" />}
-                  <span>{device.isOnline ? 'Desconectar' : 'Conectar'}</span>
+                  {device.connectionType !== 'disconnected' ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-emerald-400" />}
+                  <span>{device.connectionType !== 'disconnected' ? 'Desconectar' : 'Conectar'}</span>
                 </button>
 
                 {device.type === 'custom' && (

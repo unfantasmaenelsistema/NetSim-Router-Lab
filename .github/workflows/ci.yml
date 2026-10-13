@@ -1,29 +1,53 @@
-name: CI - Build & Typecheck
+name: CI & GitHub Pages
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-    - name: Use Node.js 20.x
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20.x
-        cache: 'npm'
+      # El proyecto usa bun.lock (no hay package-lock.json): npm ci fallaría
+      - uses: oven-sh/setup-bun@v2
 
-    - name: Install dependencies
-      run: npm ci
+      - name: Instalar dependencias
+        run: bun install --frozen-lockfile
 
-    - name: Type check (TypeScript)
-      run: npm run lint
+      - name: Comprobación de tipos (TypeScript)
+        run: bun run lint
 
-    - name: Build project (Vite)
-      run: npm run build
+      - name: Build (Vite)
+        run: bun run build
+
+      - name: Publicar artefacto de Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,4 +1,5 @@
 import { RouterConfig, VirtualDevice, NetworkTelemetry, DeviceActivity } from '../types/router';
+import { apipaFromMac, getDhcpPool, intToIp, ipToInt, isValidIPv4 } from './netUtils';
 
 export function calculateDeviceBaseDemand(activity: DeviceActivity): { down: number; up: number } {
   switch (activity) {
@@ -44,6 +45,96 @@ export interface SecurityAuditReport {
   positives: string[];
 }
 
+type QosClass = 'highest' | 'high' | 'normal' | 'low';
+const QOS_ORDER: QosClass[] = ['highest', 'high', 'normal', 'low'];
+
+/**
+ * Servidor DHCP simulado: respeta reservas estáticas, mantiene la concesión de cada equipo si
+ * sigue siendo válida y reparte las IPs libres del pool. Si el pool se agota (o está mal
+ * configurado), el cliente se autoconfigura con APIPA 169.254.x.x y se queda sin conectividad.
+ */
+function assignAddresses(
+  config: RouterConfig,
+  devices: VirtualDevice[],
+  wantsLease: boolean[]
+): { ip: string; failure?: string }[] {
+  const pool = getDhcpPool(config);
+  const taken = new Set<number>();
+  if (isValidIPv4(config.lanIp)) taken.add(ipToInt(config.lanIp));
+  config.staticLeases.forEach(l => isValidIPv4(l.ip) && taken.add(ipToInt(l.ip)));
+
+  const leaseFor = (d: VirtualDevice) => config.staticLeases.find(l => l.mac.toLowerCase() === d.mac.toLowerCase());
+  const result: { ip: string; failure?: string }[] = devices.map(d => ({ ip: d.ip }));
+  const pending: number[] = [];
+
+  devices.forEach((device, idx) => {
+    if (!wantsLease[idx]) return;
+    const lease = leaseFor(device);
+    if (lease) {
+      result[idx] = { ip: lease.ip };
+      return;
+    }
+    if (!config.dhcpEnabled) {
+      result[idx] = { ip: apipaFromMac(device.mac), failure: 'DHCP desactivado: sin dirección IP válida (APIPA 169.254.x.x)' };
+      return;
+    }
+    if (!pool.valid) {
+      result[idx] = { ip: apipaFromMac(device.mac), failure: `DHCP sin servicio: ${pool.error} (APIPA 169.254.x.x)` };
+      return;
+    }
+    // Renovación: el cliente conserva su IP si sigue dentro del pool y nadie la usa
+    const current = isValidIPv4(device.ip) ? ipToInt(device.ip) : -1;
+    if (current >= pool.start && current <= pool.end && !taken.has(current)) {
+      taken.add(current);
+      result[idx] = { ip: device.ip };
+    } else {
+      pending.push(idx);
+    }
+  });
+
+  // Nuevas concesiones (DORA) para los clientes sin IP válida
+  pending.forEach(idx => {
+    for (let n = pool.start; n <= pool.end; n++) {
+      if (!taken.has(n)) {
+        taken.add(n);
+        result[idx] = { ip: intToIp(n) };
+        return;
+      }
+    }
+    result[idx] = {
+      ip: apipaFromMac(devices[idx].mac),
+      failure: `Pool DHCP agotado (${pool.size} direcciones, todas ocupadas): APIPA 169.254.x.x`
+    };
+  });
+
+  return result;
+}
+
+/** Reparto de ancho de banda: con QoS por prioridad estricta, sin QoS a partes iguales (FIFO). */
+function allocateBandwidth(demands: number[], classes: QosClass[], capacity: number, qosEnabled: boolean): number[] {
+  const total = demands.reduce((s, d) => s + d, 0);
+  if (total <= capacity) return demands.slice();
+  if (!qosEnabled) {
+    const ratio = capacity / total;
+    return demands.map(d => d * ratio);
+  }
+  // Como CAKE / fq_codel: cada flujo activo tiene un mínimo garantizado (2 % de la línea)
+  // para no quedarse a cero; el resto se reparte por prioridad estricta.
+  const active = demands.filter(d => d > 0).length;
+  const floor = Math.min(capacity * 0.02, capacity / Math.max(1, active));
+  const out = demands.map(d => Math.min(d, floor));
+  let remaining = capacity - out.reduce((s, v) => s + v, 0);
+  for (const cls of QOS_ORDER) {
+    const idxs = demands.map((_, i) => i).filter(i => classes[i] === cls);
+    const classDemand = idxs.reduce((s, i) => s + (demands[i] - out[i]), 0);
+    if (classDemand <= 0) continue;
+    const ratio = Math.min(1, remaining / classDemand);
+    idxs.forEach(i => (out[i] += (demands[i] - out[i]) * ratio));
+    remaining = Math.max(0, remaining - classDemand * ratio);
+  }
+  return out;
+}
+
 export function runSimulationTick(
   config: RouterConfig,
   currentDevices: VirtualDevice[],
@@ -52,99 +143,75 @@ export function runSimulationTick(
   const wanCapDown = config.qosTotalDownlinkMbps || 300;
   const wanCapUp = config.qosTotalUplinkMbps || 100;
 
-  let totalDemandDown = 0;
-  let totalDemandUp = 0;
-  let activeSessions = 0;
-
   // Check if DoS is active
   const isDosOngoing = isExternalDosAttackActive || currentDevices.some(d => d.isOnline && d.currentActivity === 'ddos_attack');
   const dosMitigated = isDosOngoing && config.firewallSpiEnabled && config.dosProtectionEnabled;
   const dosUnchecked = isDosOngoing && (!config.firewallSpiEnabled || !config.dosProtectionEnabled);
 
-  // 1. Process device connections and demands
-  const processedDevices: VirtualDevice[] = currentDevices.map(device => {
-    // Determine connection feasibility
-    let canConnect = true;
-    let failureReason = '';
+  const wifi24CleanChannel = [1, 6, 11].includes(config.wifi24Channel);
 
+  // 1. Capa física / enlace: ¿puede asociarse el equipo?
+  const linkChecks = currentDevices.map(device => {
+    let failureReason = '';
     if (device.connectionType === 'disconnected') {
-      canConnect = false;
       failureReason = 'Desconectado físicamente';
     } else if (device.connectionType === 'wifi_24g' && !config.wifi24Enabled) {
-      canConnect = false;
       failureReason = 'Banda Wi-Fi 2.4 GHz desactivada';
     } else if (device.connectionType === 'wifi_5g' && !config.wifi5Enabled) {
-      canConnect = false;
       failureReason = 'Banda Wi-Fi 5 GHz desactivada';
     } else if (device.connectionType === 'wifi_guest' && !config.guestWifiEnabled) {
-      canConnect = false;
       failureReason = 'Red Wi-Fi de invitados desactivada';
     }
 
-    // Check MAC filtering
+    const mac = device.mac.toUpperCase();
+    const macList = config.macFilterList.map(m => m.toUpperCase());
     let isBlockedByMac = false;
     if (config.macFilteringMode === 'whitelist') {
-      isBlockedByMac = !config.macFilterList.includes(device.mac);
+      isBlockedByMac = !macList.includes(mac);
     } else if (config.macFilteringMode === 'blacklist') {
-      isBlockedByMac = config.macFilterList.includes(device.mac);
+      isBlockedByMac = macList.includes(mac);
     }
-
-    if (isBlockedByMac) {
-      canConnect = false;
+    if (isBlockedByMac && !failureReason) {
       failureReason = 'Bloqueado por filtro de dirección MAC';
     }
+    return { failureReason, isBlockedByMac };
+  });
 
-    // Check IP Assignment (DHCP)
-    let assignedIp = device.ip;
-    const staticLease = config.staticLeases.find(l => l.mac.toLowerCase() === device.mac.toLowerCase());
-    if (staticLease) {
-      assignedIp = staticLease.ip;
-    } else if (!config.dhcpEnabled) {
-      // No DHCP and no static lease -> APIPA 169.254.x.x
-      assignedIp = '169.254.120.' + (Math.abs(device.mac.charCodeAt(device.mac.length - 1)) % 250);
-      canConnect = false;
-      failureReason = 'DHCP desactivado: Sin dirección IP válida (APIPA 169.254.x.x)';
-    }
+  // 2. Capa de red: DHCP
+  const addresses = assignAddresses(config, currentDevices, linkChecks.map(l => !l.failureReason));
 
-    // Check Parental control
+  // 3. Demanda de cada equipo
+  const processedDevices: VirtualDevice[] = currentDevices.map((device, idx) => {
+    const { isBlockedByMac } = linkChecks[idx];
+    const failureReason = linkChecks[idx].failureReason || addresses[idx].failure || '';
+    const canConnect = !failureReason;
+
+    // Control parental: el filtro DNS corta el tráfico de la actividad bloqueada
     let isBlockedByParental = false;
-    if (config.parentalControlEnabled) {
-      const hasBlockedDomain = config.blockedDomains.some(d => d.enabled && (
+    if (canConnect && config.parentalControlEnabled && (device.type === 'smartphone' || device.type === 'smart_tv')) {
+      isBlockedByParental = config.blockedDomains.some(d => d.enabled && (
         (d.domain.includes('tiktok') && device.currentActivity === 'web_browsing') ||
         (d.domain.includes('roblox') && device.currentActivity === 'gaming')
       ));
-      if (hasBlockedDomain && (device.type === 'smartphone' || device.type === 'smart_tv')) {
-        isBlockedByParental = true;
-      }
     }
 
-    // Guest isolation check
     const isGuest = device.connectionType === 'wifi_guest';
-    const isIsolated = isGuest && config.guestIsolation;
+    const isIsolated = canConnect && isGuest && config.guestIsolation;
 
-    // Calculate demands
-    const baseDemand = calculateDeviceBaseDemand(device.currentActivity);
+    const baseDemand = calculateDeviceBaseDemand(isBlockedByParental ? 'idle' : device.currentActivity);
     let demandDown = canConnect ? baseDemand.down : 0;
     let demandUp = canConnect ? baseDemand.up : 0;
 
-    // If guest network bandwidth limit is set
     if (isGuest && config.guestBandwidthLimitMbps > 0) {
       demandDown = Math.min(demandDown, config.guestBandwidthLimitMbps);
       demandUp = Math.min(demandUp, config.guestBandwidthLimitMbps / 2);
     }
 
-    // Add slight realistic jitter/fluctuation
     const jitterFactor = 0.9 + Math.random() * 0.2;
     demandDown = Number((demandDown * jitterFactor).toFixed(1));
     demandUp = Number((demandUp * jitterFactor).toFixed(1));
 
-    if (canConnect) {
-      totalDemandDown += demandDown;
-      totalDemandUp += demandUp;
-      activeSessions += Math.max(2, Math.round((demandDown + demandUp) * 4));
-    }
-
-    let statusLog = '';
+    let statusLog: string;
     if (!canConnect) {
       statusLog = failureReason;
     } else if (isBlockedByParental) {
@@ -152,12 +219,12 @@ export function runSimulationTick(
     } else if (isIsolated) {
       statusLog = 'Aislado en Red de Invitados (Acceso a Internet exclusivo, LAN inaccesible)';
     } else {
-      statusLog = `Conectado y transmitiendo (${device.currentActivity.replace('_', ' ')})`;
+      statusLog = `Conectado y transmitiendo (${device.currentActivity.replace(/_/g, ' ')})`;
     }
 
     return {
       ...device,
-      ip: assignedIp,
+      ip: addresses[idx].ip,
       isOnline: canConnect,
       demandDownloadMbps: demandDown,
       demandUploadMbps: demandUp,
@@ -168,12 +235,23 @@ export function runSimulationTick(
     };
   });
 
-  // 2. Bandwidth distribution & Latency computation
-  const isDownOverloaded = totalDemandDown > wanCapDown;
-  const isUpOverloaded = totalDemandUp > wanCapUp;
-  const bufferbloatFactor = isDownOverloaded || isUpOverloaded ? (totalDemandDown / wanCapDown) * 80 : 0;
+  // 4. Reparto del ancho de banda WAN y latencia
+  const totalDemandDown = processedDevices.reduce((s, d) => s + (d.isOnline ? d.demandDownloadMbps : 0), 0);
+  const totalDemandUp = processedDevices.reduce((s, d) => s + (d.isOnline ? d.demandUploadMbps : 0), 0);
+  const activeSessions = processedDevices.reduce(
+    (s, d) => s + (d.isOnline ? Math.max(2, Math.round((d.demandDownloadMbps + d.demandUploadMbps) * 4)) : 0),
+    0
+  );
+  const isOverloaded = totalDemandDown > wanCapDown || totalDemandUp > wanCapUp;
+  const loadRatio = Math.max(totalDemandDown / wanCapDown, totalDemandUp / wanCapUp);
+  const bufferbloatFactor = isOverloaded ? loadRatio * 80 : 0;
 
-  const finalDevices = processedDevices.map(device => {
+  const classes = processedDevices.map(d => (config.qosDevicePriorities[d.id] || 'normal') as QosClass);
+  const online = processedDevices.map(d => d.isOnline);
+  const allocDown = allocateBandwidth(processedDevices.map((d, i) => (online[i] ? d.demandDownloadMbps : 0)), classes, wanCapDown, config.qosEnabled);
+  const allocUp = allocateBandwidth(processedDevices.map((d, i) => (online[i] ? d.demandUploadMbps : 0)), classes, wanCapUp, config.qosEnabled);
+
+  const finalDevices = processedDevices.map((device, idx) => {
     if (!device.isOnline) {
       return {
         ...device,
@@ -184,76 +262,62 @@ export function runSimulationTick(
       };
     }
 
-    let effectiveDown = device.demandDownloadMbps;
-    let effectiveUp = device.demandUploadMbps;
+    let effectiveDown = allocDown[idx];
+    let effectiveUp = allocUp[idx];
     let latency = 16;
     let packetLoss = 0;
 
-    // Medium latency baseline
     if (device.connectionType === 'wifi_24g') {
       latency += 12; // 2.4GHz interference penalty
-      if (config.wifi24ChannelWidth === 40) latency += 6; // 40MHz channel congestion in 2.4G
+      if (config.wifi24ChannelWidth === 40) {
+        latency += 6; // 40MHz channel congestion in 2.4G
+        packetLoss += 6;
+      }
+      if (!wifi24CleanChannel) {
+        latency += 10; // canal solapado con los vecinos (fuera de 1/6/11)
+        packetLoss += 6;
+      }
+      if (config.wifi24ChannelWidth === 40 || !wifi24CleanChannel) {
+        effectiveDown *= 0.7;
+        effectiveUp *= 0.7;
+      }
     } else if (device.connectionType === 'wifi_5g') {
       latency += 3;
     } else if (device.connectionType.startsWith('ethernet')) {
       latency += 1;
     }
 
-    // QoS Logic
-    const priority = config.qosDevicePriorities[device.id] || 'normal';
-
     if (config.qosEnabled) {
-      if (priority === 'highest') {
-        effectiveDown = device.demandDownloadMbps;
-        effectiveUp = device.demandUploadMbps;
-        latency += 2; // Protected by priority queue
-      } else if (priority === 'high') {
-        effectiveDown = device.demandDownloadMbps * 0.95;
-        effectiveUp = device.demandUploadMbps * 0.95;
-        latency += 6;
-      } else if (priority === 'normal') {
-        const ratio = isDownOverloaded ? Math.max(0.4, wanCapDown / (totalDemandDown * 1.1)) : 1;
-        effectiveDown = Number((device.demandDownloadMbps * ratio).toFixed(1));
-        effectiveUp = Number((device.demandUploadMbps * ratio).toFixed(1));
-        latency += config.bufferbloatMitigation ? 15 : 40;
-      } else {
-        // low
-        const ratio = isDownOverloaded ? 0.25 : 0.8;
-        effectiveDown = Number((device.demandDownloadMbps * ratio).toFixed(1));
-        effectiveUp = Number((device.demandUploadMbps * ratio).toFixed(1));
-        latency += config.bufferbloatMitigation ? 25 : 60;
-      }
-    } else {
-      // NO QOS -> Bufferbloat affects everyone, especially games!
-      if (isDownOverloaded) {
-        const ratio = Math.max(0.3, wanCapDown / totalDemandDown);
-        effectiveDown = Number((device.demandDownloadMbps * ratio).toFixed(1));
-        effectiveUp = Number((device.demandUploadMbps * ratio).toFixed(1));
-        latency += bufferbloatFactor;
-        packetLoss += Math.min(15, Math.round(bufferbloatFactor / 10));
-      }
+      const queueDelay: Record<QosClass, number> = isOverloaded
+        ? { highest: 2, high: 6, normal: config.bufferbloatMitigation ? 15 : 40, low: config.bufferbloatMitigation ? 25 : 60 }
+        : { highest: 1, high: 2, normal: 3, low: 5 };
+      latency += queueDelay[classes[idx]];
+      if (isOverloaded && classes[idx] === 'low' && !config.bufferbloatMitigation) packetLoss += 2;
+    } else if (isOverloaded) {
+      // Sin QoS: una sola cola FIFO, el bufferbloat afecta a todos por igual
+      latency += bufferbloatFactor;
+      packetLoss += Math.min(15, Math.round(bufferbloatFactor / 10));
     }
 
-    // DoS impact
     if (dosUnchecked) {
       latency += 380 + Math.random() * 200;
       packetLoss += 25 + Math.random() * 20;
-      effectiveDown = Number((effectiveDown * 0.2).toFixed(1));
-      effectiveUp = Number((effectiveUp * 0.2).toFixed(1));
+      effectiveDown *= 0.2;
+      effectiveUp *= 0.2;
     } else if (dosMitigated) {
       latency += 8;
     }
 
     return {
       ...device,
-      currentDownloadMbps: effectiveDown,
-      currentUploadMbps: effectiveUp,
+      currentDownloadMbps: Number(effectiveDown.toFixed(1)),
+      currentUploadMbps: Number(effectiveUp.toFixed(1)),
       currentLatencyMs: Math.round(latency),
       packetLossPercent: Math.min(100, Math.round(packetLoss))
     };
   });
 
-  // 3. Compute telemetry
+  // 5. Telemetría
   const totalEffectiveDown = finalDevices.reduce((sum, d) => sum + d.currentDownloadMbps, 0);
   const totalEffectiveUp = finalDevices.reduce((sum, d) => sum + d.currentUploadMbps, 0);
   const onlineDevices = finalDevices.filter(d => d.isOnline);
@@ -267,7 +331,6 @@ export function runSimulationTick(
     ? Math.round(onlineDevices.reduce((sum, d) => sum + d.packetLossPercent, 0) / onlineDevices.length)
     : 0;
 
-  // Router CPU & RAM calculation
   let cpu = 12; // idle baseline
   let ram = 34; // baseline firmware OS
 
@@ -295,11 +358,10 @@ export function runSimulationTick(
     routerCpuPercent: Math.min(100, cpu),
     routerRamPercent: Math.min(100, ram),
     activeSessionsCount: activeSessions + (dosUnchecked ? 4500 : 0),
-    wifiInterference24: config.wifi24ChannelWidth === 40 ? 65 : 22,
+    wifiInterference24: Math.min(95, 22 + (config.wifi24ChannelWidth === 40 ? 43 : 0) + (wifi24CleanChannel ? 0 : 25)),
     wifiInterference5: config.wifi5ChannelWidth === 160 ? 30 : 12
   };
 
-  // 4. Security Audit
   const securityAudit = performSecurityAudit(config);
 
   return {
@@ -331,7 +393,15 @@ export function performSecurityAudit(config: RouterConfig): SecurityAuditReport 
   }
 
   // 2. Wi-Fi Security Mode
-  if (config.wifi24Security === 'none' || config.wifi5Security === 'none') {
+  // Solo cuentan las redes que están emitiendo
+  const activeWifiModes = [
+    config.wifi24Enabled ? config.wifi24Security : null,
+    config.wifi5Enabled ? config.wifi5Security : null
+  ].filter((m): m is RouterConfig['wifi24Security'] => m !== null);
+
+  if (activeWifiModes.length === 0) {
+    positives.push('Radios Wi-Fi apagadas: sin superficie de ataque inalámbrica.');
+  } else if (activeWifiModes.includes('none')) {
     score -= 40;
     vulnerabilities.push({
       id: 'vuln-wifi-open',
@@ -340,7 +410,7 @@ export function performSecurityAudit(config: RouterConfig): SecurityAuditReport 
       description: 'Cualquier persona dentro del radio de alcance puede capturar el tráfico no cifrado de los usuarios o infectar dispositivos.',
       remediation: 'Establece cifrado WPA3 o WPA2-Personal con clave robusta.'
     });
-  } else if (config.wifi24Security === 'wep' || config.wifi5Security === 'wep') {
+  } else if (activeWifiModes.includes('wep')) {
     score -= 35;
     vulnerabilities.push({
       id: 'vuln-wifi-wep',
@@ -349,7 +419,7 @@ export function performSecurityAudit(config: RouterConfig): SecurityAuditReport 
       description: 'El algoritmo WEP tiene debilidades criptográficas en sus vectores de inicialización (IV). Puede ser descifrado en menos de 60 segundos.',
       remediation: 'Actualiza inmediatamente a WPA2-AES o WPA3-Personal.'
     });
-  } else if (config.wifi5Security === 'wpa3') {
+  } else if (config.wifi5Enabled && config.wifi5Security === 'wpa3') {
     positives.push('Wi-Fi 5 GHz protegido con el estándar de vanguardia WPA3-SAE.');
   } else {
     positives.push('Wi-Fi protegido con WPA2-AES robusto.');
@@ -437,6 +507,20 @@ export function performSecurityAudit(config: RouterConfig): SecurityAuditReport 
     });
   } else if (config.guestWifiEnabled && config.guestIsolation) {
     positives.push('Red de invitados aislada correctamente de la red privada.');
+  }
+
+  // 9. UPnP
+  if (config.upnpEnabled) {
+    score -= 10;
+    vulnerabilities.push({
+      id: 'vuln-upnp',
+      severity: 'warning',
+      title: 'UPnP Activo (Apertura Automática de Puertos)',
+      description: 'Cualquier programa o dispositivo IoT de la red local puede pedir al router que abra puertos hacia Internet sin intervención del administrador. El malware lo usa para exponer servicios o crear puertas traseras.',
+      remediation: 'Desactiva UPnP en la pestaña Port Forwarding y crea manualmente solo las reglas que necesites.'
+    });
+  } else {
+    positives.push('UPnP desactivado: ningún equipo puede abrir puertos sin supervisión.');
   }
 
   score = Math.max(0, Math.min(100, score));

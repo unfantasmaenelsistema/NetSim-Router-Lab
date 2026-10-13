@@ -99,7 +99,7 @@ Generado en https://www.unfantasmaenelsistema.com/
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-xl bg-slate-950 border border-slate-750 p-1 flex items-center justify-center shrink-0">
               <img
-                src="/icono.png"
+                src={`${import.meta.env.BASE_URL}icono.png`}
                 alt="Logo"
                 className="w-full h-full object-contain aspect-square"
                 referrerPolicy="no-referrer"

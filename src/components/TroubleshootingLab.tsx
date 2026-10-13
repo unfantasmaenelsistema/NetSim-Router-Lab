@@ -2,13 +2,19 @@ import React, { useState } from 'react';
 import { RouterConfig, VirtualDevice } from '../types/router';
 import { Wrench, CheckCircle2, AlertTriangle, ArrowRight, HelpCircle, Sparkles, RefreshCw, Zap } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { ActiveTab } from './Header';
+import { getDhcpPool, isApipa, isDnsWorking } from '../simulation/netUtils';
+
+export type TroubleshootingStatus = Record<string, 'active' | 'resolved'>;
 
 interface Props {
   config: RouterConfig;
   devices: VirtualDevice[];
   onUpdateConfig: (newConfig: Partial<RouterConfig>) => void;
-  onNavigateTab: (tab: any) => void;
+  onNavigateTab: (tab: ActiveTab) => void;
   onOpenTopic: (topicId: string) => void;
+  status: TroubleshootingStatus;
+  onStatusChange: (status: TroubleshootingStatus) => void;
 }
 
 export interface TroubleshootingCase {
@@ -18,10 +24,12 @@ export interface TroubleshootingCase {
   clientTicket: string;
   symptom: string;
   diagnosisClue: string;
-  targetTab: string;
+  targetTab: ActiveTab;
+  /** Comando de terminal con el que el alumno puede observar el síntoma */
+  observeHint: string;
   checkResolved: (config: RouterConfig, devices: VirtualDevice[]) => boolean;
   solutionExplanation: string;
-  injectIssue: () => Partial<RouterConfig>;
+  injectIssue: (config: RouterConfig) => Partial<RouterConfig>;
 }
 
 export const TroubleshootingLab: React.FC<Props> = ({
@@ -29,11 +37,11 @@ export const TroubleshootingLab: React.FC<Props> = ({
   devices,
   onUpdateConfig,
   onNavigateTab,
-  onOpenTopic
+  status,
+  onStatusChange
 }) => {
-  const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
-  const [resolvedCases, setResolvedCases] = useState<Record<string, boolean>>({});
   const [revealedClues, setRevealedClues] = useState<Record<string, boolean>>({});
+  const [failedCheck, setFailedCheck] = useState<Record<string, boolean>>({});
 
   const cases: TroubleshootingCase[] = [
     {
@@ -41,12 +49,15 @@ export const TroubleshootingLab: React.FC<Props> = ({
       title: 'Incidencia #1: Pool DHCP Agotado (Dispositivos en 169.254.x.x)',
       difficulty: 'Fácil',
       clientTicket: '"Compré una nueva tablet y no se conecta a Internet. Dice Obteniendo IP... y luego asigna una dirección extraña que empieza por 169.254."',
-      symptom: 'El pool DHCP se configuró con solo 2 direcciones IP disponibles (192.168.1.100 a 192.168.1.101) y ya están ocupadas.',
+      symptom: 'El pool DHCP se configuró con solo 2 direcciones IP disponibles (192.168.1.100 a 192.168.1.101) y ya están ocupadas: los demás clientes no reciben DHCPOFFER y se autoconfiguran con APIPA.',
       diagnosisClue: 'Ve a "Red LAN & DHCP" y amplía el rango del Pool DHCP (por ejemplo de 192.168.1.100 hasta 192.168.1.200).',
       targetTab: 'lan',
-      checkResolved: (cfg) => {
-        const endLastOctet = Number(cfg.dhcpPoolEnd.split('.')[3] || 0);
-        return cfg.dhcpEnabled && endLastOctet >= 150;
+      observeHint: 'Consola del Router → "show dhcp leases" · en un móvil → "ipconfig"',
+      checkResolved: (cfg, devs) => {
+        const pool = getDhcpPool(cfg);
+        // Equipos que piden concesión: los conectados y los que se quedaron sin IP por culpa del DHCP
+        const clients = devs.filter(d => d.isOnline || /DHCP|APIPA/.test(d.statusLog));
+        return cfg.dhcpEnabled && pool.valid && clients.every(d => !isApipa(d.ip));
       },
       solutionExplanation: 'Al ampliar el pool de direcciones IP, el demonio DHCP vuelve a tener direcciones libres para asignar a nuevos clientes sin agotar el espacio.',
       injectIssue: () => ({
@@ -63,9 +74,8 @@ export const TroubleshootingLab: React.FC<Props> = ({
       symptom: 'El servidor DNS primario fue configurado erróneamente en una IP no funcional (ej. 192.0.2.1).',
       diagnosisClue: 'En la pestaña "Red LAN & DHCP", cambia los DNS a servidores fiables como Cloudflare (1.1.1.1) o Google (8.8.8.8).',
       targetTab: 'lan',
-      checkResolved: (cfg) => {
-        return cfg.wanPrimaryDns === '1.1.1.1' || cfg.wanPrimaryDns === '8.8.8.8' || cfg.wanPrimaryDns === '9.9.9.9' || cfg.wanDnsMode === 'ISP';
-      },
+      observeHint: 'Terminal → "ping 8.8.8.8" (funciona) y "nslookup google.com" (falla)',
+      checkResolved: (cfg) => isDnsWorking(cfg),
       solutionExplanation: 'Sin un servidor DNS activo, el navegador no puede traducir nombres de dominio a direcciones IP, aunque la conexión física funcione al 100%.',
       injectIssue: () => ({
         wanDnsMode: 'Custom',
@@ -81,12 +91,16 @@ export const TroubleshootingLab: React.FC<Props> = ({
       symptom: 'La regla de Port Forwarding se configuró con el puerto externo correcto (25565), pero el puerto interno se puso en 8080 en vez de 25565.',
       diagnosisClue: 'En "Port Forwarding (NAT)", edita o habilita la regla de Minecraft asegurando que tanto el puerto externo como interno sean 25565 TCP.',
       targetTab: 'portforward',
+      observeHint: 'Consola del Router → "iptables -t nat -L -n -v"',
       checkResolved: (cfg) => {
-        return cfg.portForwardRules.some(r => r.enabled && r.externalPort === 25565 && r.internalPort === 25565 && r.internalIp === '192.168.1.50');
+        const rules = cfg.portForwardRules.filter(r => r.enabled && r.externalPort === 25565);
+        return rules.length > 0 && rules.every(r => r.internalPort === 25565 && r.internalIp === '192.168.1.50' && r.protocol !== 'UDP');
       },
       solutionExplanation: 'El tráfico llegaba a tu IP pública pero el router lo enviaba al puerto 8080 de tu PC, donde nadie estaba escuchando.',
-      injectIssue: () => ({
+      // Sustituye solo la regla del puerto 25565: el resto de reglas del alumno se conservan
+      injectIssue: (cfg) => ({
         portForwardRules: [
+          ...cfg.portForwardRules.filter(r => r.externalPort !== 25565),
           {
             id: 'rule-minecraft-broken',
             serviceName: 'Minecraft Server',
@@ -107,6 +121,7 @@ export const TroubleshootingLab: React.FC<Props> = ({
       symptom: 'La banda de 2.4 GHz está en canal con ancho de 40 MHz colisionando con los canales 1 al 9.',
       diagnosisClue: 'En "Wi-Fi Inalámbrico", reduce el ancho de canal de 2.4 GHz a 20 MHz en canales limpios (1, 6 u 11).',
       targetTab: 'wireless',
+      observeHint: 'Terminal desde la Cámara IP (2.4 GHz) → "ping 8.8.8.8" · Consola → "wifi-status"',
       checkResolved: (cfg) => {
         return cfg.wifi24ChannelWidth === 20 && (cfg.wifi24Channel === 1 || cfg.wifi24Channel === 6 || cfg.wifi24Channel === 11);
       },
@@ -121,9 +136,10 @@ export const TroubleshootingLab: React.FC<Props> = ({
       title: 'Incidencia #5: Vulnerabilidad de Red Abierta y DMZ Descontrolada',
       difficulty: 'Avanzada',
       clientTicket: '"Un informe de seguridad indica que todos los puertos de mi ordenador principal están expuestos a Internet sin cortafuegos."',
-      symptom: 'La zona desmilitarizada (DMZ) quedó activada apuntando a la IP de la torre de trabajo.',
-      diagnosisClue: 'En "Port Forwarding (NAT)", desactiva la casilla de DMZ para que el firewall vuelva a proteger todos los equipos.',
+      symptom: 'La zona desmilitarizada (DMZ) quedó activada apuntando a la IP de la torre de trabajo y, además, alguien desactivó el Firewall SPI.',
+      diagnosisClue: 'Son dos fallos: en "Port Forwarding (NAT)" desactiva la DMZ, y en "Seguridad & Firewall" vuelve a activar el Firewall SPI.',
       targetTab: 'portforward',
+      observeHint: 'Consola del Router → "iptables -L -n -v" y "iptables -t nat -L -n -v"',
       checkResolved: (cfg) => !cfg.dmzEnabled && cfg.firewallSpiEnabled,
       solutionExplanation: 'Al desactivar DMZ y tener SPI activo, ningún atacante puede alcanzar directamente los puertos vulnerables de tu ordenador.',
       injectIssue: () => ({
@@ -135,21 +151,23 @@ export const TroubleshootingLab: React.FC<Props> = ({
   ];
 
   const handleSimulateTrouble = (c: TroubleshootingCase) => {
-    const patch = c.injectIssue();
-    onUpdateConfig(patch);
-    setActiveCaseId(c.id);
+    onUpdateConfig(c.injectIssue(config));
+    onStatusChange({ ...status, [c.id]: 'active' });
+    setRevealedClues(prev => ({ ...prev, [c.id]: false }));
+    setFailedCheck(prev => ({ ...prev, [c.id]: false }));
   };
 
   const handleVerifyCase = (c: TroubleshootingCase) => {
     const isDone = c.checkResolved(config, devices);
     if (isDone) {
       confetti({ particleCount: 70, spread: 60 });
-      setResolvedCases(prev => ({ ...prev, [c.id]: true }));
+      onStatusChange({ ...status, [c.id]: 'resolved' });
     }
-    return isDone;
+    setFailedCheck(prev => ({ ...prev, [c.id]: !isDone }));
   };
 
-  const totalResolved = cases.filter(c => c.checkResolved(config, devices)).length;
+  // Un caso solo cuenta como resuelto si antes se ha simulado la avería
+  const totalResolved = cases.filter(c => status[c.id] === 'resolved').length;
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-5">
@@ -178,8 +196,8 @@ export const TroubleshootingLab: React.FC<Props> = ({
       {/* Cases List */}
       <div className="space-y-4">
         {cases.map((c) => {
-          const isResolved = c.checkResolved(config, devices);
-          const isActive = activeCaseId === c.id;
+          const isResolved = status[c.id] === 'resolved';
+          const isActive = status[c.id] === 'active';
           const isClueOpen = revealedClues[c.id];
 
           return (
@@ -238,9 +256,11 @@ export const TroubleshootingLab: React.FC<Props> = ({
                   Ticket de Soporte del Usuario:
                 </span>
                 <p className="italic text-slate-300">{c.clientTicket}</p>
-                <div className="text-[11px] text-slate-400 pt-1">
-                  <strong>Diagnóstico Técnico:</strong> {c.symptom}
-                </div>
+                {(isActive || isResolved) && (
+                  <div className="text-[11px] text-slate-400 pt-1">
+                    <strong>Cómo observarlo:</strong> <span className="font-mono">{c.observeHint}</span>
+                  </div>
+                )}
               </div>
 
               {/* Clue and Verification */}
@@ -248,19 +268,29 @@ export const TroubleshootingLab: React.FC<Props> = ({
                 <div>
                   {isResolved ? (
                     <span className="text-emerald-400 font-semibold flex items-center gap-1.5">
-                      <CheckCircle2 className="w-4 h-4" /> {c.solutionExplanation}
+                      <CheckCircle2 className="w-4 h-4 shrink-0" /> {c.solutionExplanation}
                     </span>
+                  ) : isActive ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleVerifyCase(c)}
+                        className="px-3 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold cursor-pointer"
+                      >
+                        Comprobar si está solucionado
+                      </button>
+                      {failedCheck[c.id] && (
+                        <span className="text-rose-400 flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5" /> Todavía no está resuelto.
+                        </span>
+                      )}
+                    </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleVerifyCase(c)}
-                      className="px-3 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold cursor-pointer"
-                    >
-                      Comprobar si está solucionado
-                    </button>
+                    <span className="text-slate-500">Pulsa «Simular Avería» para empezar este caso.</span>
                   )}
                 </div>
 
+                {(isActive || isResolved) && (
                 <button
                   type="button"
                   onClick={() => setRevealedClues(prev => ({ ...prev, [c.id]: !prev[c.id] }))}
@@ -269,11 +299,13 @@ export const TroubleshootingLab: React.FC<Props> = ({
                   <HelpCircle className="w-3.5 h-3.5 text-sky-400" />
                   <span>{isClueOpen ? 'Ocultar Pista de Diagnóstico' : 'Ver Pista de Diagnóstico'}</span>
                 </button>
+                )}
               </div>
 
-              {isClueOpen && (
-                <div className="p-2.5 bg-sky-950/30 border border-sky-800/40 rounded-lg text-xs text-sky-300">
-                  <strong>Pista:</strong> {c.diagnosisClue}
+              {isClueOpen && (isActive || isResolved) && (
+                <div className="p-2.5 bg-sky-950/30 border border-sky-800/40 rounded-lg text-xs text-sky-300 space-y-1">
+                  <div><strong>Diagnóstico técnico:</strong> {c.symptom}</div>
+                  <div><strong>Pista:</strong> {c.diagnosisClue}</div>
                 </div>
               )}
             </div>

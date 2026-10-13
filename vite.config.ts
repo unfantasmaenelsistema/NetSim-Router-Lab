@@ -5,6 +5,8 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    // Rutas relativas: el build funciona igual en GitHub Pages (/NetSim-Router-Lab/) que en la raíz de un dominio
+    base: './',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
