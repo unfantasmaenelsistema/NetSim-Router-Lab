@@ -195,7 +195,7 @@ export const RouterHardwareView: React.FC<Props> = ({
 
         {/* Rear Panel / Ports Preview */}
         <div className="mt-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-4 text-xs">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 min-w-0">
             <span className="text-slate-400 font-mono text-[11px]">Panel Posterior (Puertos Físicos):</span>
             
             {/* WAN Port */}
@@ -206,7 +206,7 @@ export const RouterHardwareView: React.FC<Props> = ({
             </div>
 
             {/* LAN Ports */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               {[
                 { port: 1, dev: lan1Device },
                 { port: 2, dev: lan2Device },
@@ -230,7 +230,7 @@ export const RouterHardwareView: React.FC<Props> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-4 text-[11px] font-mono text-slate-400">
+          <div className="flex flex-wrap items-center gap-4 text-[11px] font-mono text-slate-400">
             <div className="flex items-center gap-1.5">
               <Cpu className="w-3.5 h-3.5 text-sky-400" />
               <span>CPU: {telemetry.routerCpuPercent}%</span>

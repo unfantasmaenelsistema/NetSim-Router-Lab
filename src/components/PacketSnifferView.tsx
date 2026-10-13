@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { RouterConfig, VirtualDevice } from '../types/router';
+import { simulatedResolve } from '../simulation/netUtils';
+import { ROUTER_LAN_MAC } from '../simulation/cliEngine';
 import { Play, Pause, Trash2, Filter, Layers, Lock, Unlock, Eye, Sparkles, Network } from 'lucide-react';
 
 interface Props {
@@ -117,33 +119,58 @@ export const PacketSnifferView: React.FC<Props> = ({ config, devices, onOpenTopi
     }
   ]);
 
-  // Real-time generator of live packets when capturing is active
+  // Real-time generator of live packets when capturing is active.
+  // Los equipos cambian en cada tick de simulación (800 ms): se leen desde una ref para que el
+  // intervalo de captura no se reinicie continuamente y llegue a dispararse.
+  const liveStateRef = useRef({ devices, config });
+  liveStateRef.current = { devices, config };
+  const packetSeqRef = useRef(1000);
+
   useEffect(() => {
     if (!isCapturing) return;
 
     const interval = setInterval(() => {
-      const activeDev = devices.filter(d => d.isOnline)[Math.floor(Math.random() * devices.filter(d => d.isOnline).length)] || devices[0];
+      const { devices: curDevices, config: curConfig } = liveStateRef.current;
+      const onlineDevices = curDevices.filter(d => d.isOnline);
+      if (onlineDevices.length === 0) return; // sin equipos conectados no hay tráfico que capturar
+
+      const activeDev = onlineDevices[Math.floor(Math.random() * onlineDevices.length)];
       const protoList: SniffedPacket['protocol'][] = ['TCP', 'UDP', 'DNS', 'TLS', 'ICMP'];
       const pickedProto = protoList[Math.floor(Math.random() * protoList.length)];
-      const id = Date.now() % 10000;
-      const isWifi = activeDev.connectionType.startsWith('wifi');
-      const isSecured = isWifi ? (config.wifi5Security !== 'none' && config.wifi24Security !== 'none') : true;
+      packetSeqRef.current += 1;
+      const id = packetSeqRef.current;
+
+      // El cifrado en el aire depende de la red a la que está asociado ESTE equipo
+      const linkSecurity =
+        activeDev.connectionType === 'wifi_24g' ? curConfig.wifi24Security
+        : activeDev.connectionType === 'wifi_5g' ? curConfig.wifi5Security
+        : activeDev.connectionType === 'wifi_guest' ? (curConfig.guestWifiPassword ? 'wpa2' : 'none')
+        : 'wired';
+      const isSecured = linkSecurity !== 'none' || pickedProto === 'TLS';
+
+      const domains = ['google.com', 'wikipedia.org', 'youtube.com', 'github.com', 'netflix.com'];
+      const domain = domains[Math.floor(Math.random() * domains.length)];
+      // En modo ISP los clientes consultan al router (relé DNS); en modo Custom, al DNS configurado
+      const dnsServer = curConfig.wanDnsMode === 'Custom' ? curConfig.wanPrimaryDns : curConfig.lanIp;
+      const remoteIp = simulatedResolve(domain);
 
       const newPkt: SniffedPacket = {
         id,
         time: (Math.random() * 2).toFixed(4),
         srcMac: activeDev.mac,
-        dstMac: '00:90:A9:7B:44:01',
+        dstMac: ROUTER_LAN_MAC,
         srcIp: activeDev.ip,
-        dstIp: pickedProto === 'DNS' ? config.wanPrimaryDns : '142.250.200.14',
+        dstIp: pickedProto === 'DNS' ? dnsServer : pickedProto === 'ICMP' ? '8.8.8.8' : remoteIp,
         srcPort: Math.floor(Math.random() * 20000 + 40000),
-        dstPort: pickedProto === 'DNS' ? 53 : pickedProto === 'TLS' ? 443 : 80,
+        dstPort: pickedProto === 'DNS' ? 53 : pickedProto === 'TLS' ? 443 : pickedProto === 'ICMP' ? 0 : 80,
         protocol: pickedProto,
         length: Math.floor(Math.random() * 800 + 60),
         info: pickedProto === 'DNS'
-          ? 'DNS Query A google.com'
+          ? `Standard query A ${domain}`
           : pickedProto === 'TLS'
-          ? 'Application Data TLSv1.3 (Stream cifrado)'
+          ? `Application Data TLSv1.3 (${domain})`
+          : pickedProto === 'ICMP'
+          ? 'Echo (ping) request'
           : `TCP Traffic Len=${Math.floor(Math.random() * 500)}`,
         payloadCleartext: `Payload datos de ${activeDev.name} (${activeDev.currentActivity})`,
         payloadEncrypted: 'e3 f1 99 c4 12 a0 be 45 88 71',
@@ -154,7 +181,7 @@ export const PacketSnifferView: React.FC<Props> = ({ config, devices, onOpenTopi
     }, 1400);
 
     return () => clearInterval(interval);
-  }, [isCapturing, devices, config]);
+  }, [isCapturing]);
 
   const filteredPackets = packets.filter(p => {
     if (protocolFilter === 'all') return true;

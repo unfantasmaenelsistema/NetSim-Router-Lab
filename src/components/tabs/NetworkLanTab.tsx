@@ -2,6 +2,32 @@ import React, { useState } from 'react';
 import { RouterConfig, StaticLease } from '../../types/router';
 import { EducationalBadge } from '../EducationalBadge';
 import { Network, Server, Globe2, Plus, Trash2, Save, Check, AlertTriangle } from 'lucide-react';
+import { getDhcpPool, ipToInt, isValidIPv4, isValidSubnetMask, sameSubnet } from '../../simulation/netUtils';
+
+/** Validación como la de un router real: no se aplica una configuración que dejaría la LAN inservible. */
+function validateLanConfig(cfg: RouterConfig): string[] {
+  const errors: string[] = [];
+  if (!isValidIPv4(cfg.lanIp)) errors.push(`La IP del router "${cfg.lanIp}" no es una IPv4 válida.`);
+  if (!isValidSubnetMask(cfg.lanSubnetMask)) errors.push(`La máscara "${cfg.lanSubnetMask}" no es una máscara de subred válida.`);
+  if (cfg.dhcpEnabled && errors.length === 0) {
+    const pool = getDhcpPool(cfg);
+    if (!pool.valid && pool.error) errors.push(`${pool.error}.`);
+    if (pool.valid && isValidIPv4(cfg.lanIp)) {
+      const lan = ipToInt(cfg.lanIp);
+      if (lan >= pool.start && lan <= pool.end) errors.push('El pool DHCP incluye la IP del propio router.');
+    }
+  }
+  if (cfg.wanDnsMode === 'Custom' && (!isValidIPv4(cfg.wanPrimaryDns) || (cfg.wanSecondaryDns && !isValidIPv4(cfg.wanSecondaryDns)))) {
+    errors.push('Los servidores DNS personalizados deben ser direcciones IPv4 válidas.');
+  }
+  cfg.staticLeases.forEach(l => {
+    if (!isValidIPv4(l.ip)) errors.push(`La reserva "${l.hostname}" tiene una IP no válida (${l.ip}).`);
+    else if (isValidIPv4(cfg.lanIp) && isValidSubnetMask(cfg.lanSubnetMask) && !sameSubnet(l.ip, cfg.lanIp, cfg.lanSubnetMask)) {
+      errors.push(`La reserva "${l.hostname}" (${l.ip}) está fuera de la subred LAN.`);
+    }
+  });
+  return errors;
+}
 
 interface Props {
   config: RouterConfig;
@@ -12,6 +38,7 @@ interface Props {
 export const NetworkLanTab: React.FC<Props> = ({ config, onUpdateConfig, onOpenTopic }) => {
   const [formData, setFormData] = useState<RouterConfig>(config);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   // New reservation inputs
   const [newHostname, setNewHostname] = useState('');
@@ -19,6 +46,9 @@ export const NetworkLanTab: React.FC<Props> = ({ config, onUpdateConfig, onOpenT
   const [newIp, setNewIp] = useState('');
 
   const handleSave = () => {
+    const errors = validateLanConfig(formData);
+    setValidationErrors(errors);
+    if (errors.length > 0) return;
     onUpdateConfig(formData);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
@@ -82,6 +112,17 @@ export const NetworkLanTab: React.FC<Props> = ({ config, onUpdateConfig, onOpenT
           <span>{savedSuccess ? '¡Cambios Guardados!' : 'Guardar y Aplicar'}</span>
         </button>
       </div>
+
+      {validationErrors.length > 0 && (
+        <div role="alert" className="bg-rose-950/40 border border-rose-800/60 rounded-xl p-4 text-xs text-rose-300 space-y-1">
+          <div className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="w-4 h-4" /> No se han aplicado los cambios:
+          </div>
+          <ul className="list-disc pl-6 space-y-0.5">
+            {validationErrors.map(e => <li key={e}>{e}</li>)}
+          </ul>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Router LAN IP & Gateway */}

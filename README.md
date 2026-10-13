@@ -4,11 +4,16 @@
 > Diseñado para estudiantes, docentes, técnicos de soporte y entusiastas del networking y la seguridad informática.
 
 [![React](https://img.shields.io/badge/React-19.0-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-7.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-v4-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![Vite](https://img.shields.io/badge/Vite-8.x-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Recharts](https://img.shields.io/badge/Recharts-3.x-22c55e)](https://recharts.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI & GitHub Pages](https://github.com/unfantasmaenelsistema/NetSim-Router-Lab/actions/workflows/ci.yml/badge.svg)](https://github.com/unfantasmaenelsistema/NetSim-Router-Lab/actions/workflows/ci.yml)
+
+### ▶️ Pruébalo online: **[https://unfantasmaenelsistema.github.io/NetSim-Router-Lab/](https://unfantasmaenelsistema.github.io/NetSim-Router-Lab/)**
+
+Sin instalar nada: funciona íntegramente en el navegador (no envía datos a ningún servidor).
 
 ---
 
@@ -57,8 +62,9 @@ Inspección profunda de tramas con desglose jerárquico del modelo OSI (Capa 2 E
   - Escáner de vulnerabilidades del router con evaluación de configuración actual y recomendaciones automáticas de mitigación.
   - Simulador didáctico de ataques con respuesta en tiempo real del firewall SPI.
 - **🔍 Packet Sniffer al estilo Wireshark:** Captura tráfico en vivo y visualiza las cabeceras binarias y campos de protocolo de cada trama.
-- **💻 Consola CLI (Command Line Interface):** Soporta comandos de estilo Cisco IOS y entornos Linux / BSD.
-- **🔧 Taller de Averías (Helpdesk Break & Fix):** 5 escenarios prácticos de incidencias comunes para entrenar habilidades de resolución de problemas.
+- **💻 Terminal CLI con dos modos:** diagnóstico desde cualquier equipo de la casa (`ping`, `traceroute`, `nslookup`, `arp`, `curl`…) y **consola de administración del router** con comandos estilo Cisco IOS / Linux (`show ip interface brief`, `iptables`, `netstat`, `show dhcp leases`…). Las respuestas salen de la configuración real del simulador: DNS caído, pool DHCP agotado, aislamiento de invitados o firewall se notan en la terminal.
+- **🧠 Motor de red coherente:** servidor DHCP con pool y reservas reales (APIPA 169.254.x.x cuando no hay concesión), QoS por prioridad que respeta el ancho de banda contratado, interferencias Wi-Fi por canal y ancho, control parental que corta el tráfico y aislamiento de invitados en capa 2.
+- **🔧 Taller de Averías (Helpdesk Break & Fix):** 5 escenarios prácticos: al simular la avería el síntoma aparece de verdad en la red y en la terminal, y el caso solo cuenta como resuelto cuando lo arreglas.
 - **🎯 Sistema de Misiones Gamificado:** Retos formativos paso a paso con celebración de confeti al cumplir los objetivos.
 - **🌓 Selector de Tema Global (Claro / Oscuro / Sistema):** Adaptabilidad visual fluida con persistencia en `localStorage`.
 - **📱 Cinta de Navegación de Doble Fila:** Distribución clara y ergonómica sin necesidad de scroll horizontal.
@@ -84,9 +90,9 @@ La navegación está dividida en dos filas temáticas para una máxima accesibil
 | Módulo | Descripción |
 | :--- | :--- |
 | **🛡️ Ciberseguridad Lab** | Centro de pruebas de ciberdefensa: gráfico Recharts de 24h, escáner de vulnerabilidades y simulador de ataques. |
-| **💻 Terminal CLI** | Consola virtual con comandos de red para pruebas de conectividad y auditoría. |
+| **💻 Terminal CLI** | Terminal de cada equipo (diagnóstico) y consola de administración del router (estado, firewall, NAT, DHCP, Wi-Fi). |
 | **🔍 Sniffer de Paquetes** | Monitor de paquetes con filtros por protocolo (TCP, UDP, ICMP, DNS, DHCP) e inspección de capas OSI. |
-| **🔧 Taller de Averías** | 5 casos de laboratorio para diagnosticar fallos de DNS, conflictos de IP, aislamiento Wi-Fi y bloqueos de firewall. |
+| **🔧 Taller de Averías** | 5 casos: pool DHCP agotado, DNS caído, regla NAT mal configurada, interferencias en 2.4 GHz y DMZ + firewall desactivado. |
 | **🏆 Misiones Didácticas** | Desafíos interactivos guiados con validación automática y recompensas visuales. |
 | **📖 Glosario de Redes** | Diccionario técnico interactivo con términos clave de telecomunicaciones y ciberseguridad. |
 
@@ -94,31 +100,35 @@ La navegación está dividida en dos filas temáticas para una máxima accesibil
 
 ## 💻 Comandos de la Terminal CLI
 
-La terminal integrada incluye un emulador de shell interactivo con soporte de auto-completado y comandos habituales:
+En el selector **«Ejecutar en»** eliges desde dónde lanzas los comandos. `Tab` autocompleta y `↑`/`↓` recorren el historial.
+
+### Desde un equipo de la red (PC, móvil, TV, cámara…)
 
 ```bash
-# Ayuda y comandos disponibles
-help
-
-# Información de interfaces y direccionamiento IP
-show ip interface brief
-ifconfig
-
-# Diagnóstico de conectividad y latencia
-ping 8.8.8.8
-ping 192.168.1.1
-traceroute 1.1.1.1
-
-# Tablas de estado y seguridad
-show arp
-iptables -L -n -v
-netstat -tuln
-
-# Servicios y operaciones
-dhcp-leases
-wifi-status
-system-reboot
+help                      # lista de comandos
+ipconfig                  # IP, máscara, gateway, DNS y origen de la dirección (alias: ifconfig)
+arp -a                    # tabla ARP del equipo
+ping 8.8.8.8              # conectividad e RTT (también "ping gateway" o un nombre de dominio)
+traceroute 1.1.1.1        # saltos hasta el destino (alias: tracert)
+nslookup google.com       # resolución DNS (alias: dig)
+curl -I http://example.com
+speedtest
 clear
+```
+
+### Desde la «Consola del Router»
+
+```bash
+show ip interface brief   # interfaces WAN / LAN / Wi-Fi y su estado
+show arp
+show dhcp leases          # pool, concesiones y clientes sin IP (alias: dhcp-leases)
+show running-config
+iptables -L -n -v         # reglas del firewall
+iptables -t nat -L -n -v  # Port Forwarding, DMZ y MASQUERADE
+netstat -tuln             # servicios escuchando en el router
+wifi-status               # radios, canales, seguridad y WPS
+ping / traceroute / nslookup
+system-reboot             # reinicia el router (alias: reload)
 ```
 
 ---
@@ -148,46 +158,45 @@ clear
 ## 📂 Estructura del Proyecto
 
 ```text
-netsim-router-lab/
-├── docs/
-│   └── screenshots/              # Capturas y diagramas vectoriales para GitHub
-│       ├── dashboard-preview.svg
-│       ├── cyberlab-preview.svg
-│       └── terminal-sniffer-preview.svg
-├── public/
-│   └── icono.png                 # Favicon e icono de la aplicación
+NetSim-Router-Lab/
+├── .github/workflows/ci.yml        # Typecheck + build con Bun y despliegue en GitHub Pages
+├── docs/screenshots/               # Capturas y diagramas vectoriales para el README
+├── public/icono.png                # Favicon e icono de la aplicación
 ├── src/
 │   ├── components/
-│   │   ├── tabs/                 # Pestañas principales de configuración y laboratorios
+│   │   ├── tabs/                   # Pestañas principales
 │   │   │   ├── DashboardTab.tsx
 │   │   │   ├── WirelessTab.tsx
-│   │   │   ├── LanDhcpTab.tsx
+│   │   │   ├── NetworkLanTab.tsx       # LAN, DHCP (con validación) y DNS
 │   │   │   ├── SecurityFirewallTab.tsx
 │   │   │   ├── PortForwardingTab.tsx
 │   │   │   ├── QosTab.tsx
 │   │   │   ├── VirtualDevicesTab.tsx
-│   │   │   ├── CybersecurityLabTab.tsx
+│   │   │   ├── SecurityLabTab.tsx      # Laboratorio de ciberseguridad
 │   │   │   ├── MissionsTab.tsx
 │   │   │   └── GlossaryTab.tsx
-│   │   ├── Header.tsx            # Cabecera con selector de tema y navegación en 2 filas
-│   │   ├── ThemeSelector.tsx     # Selector de tema (Claro / Oscuro / Sistema)
-│   │   ├── RouterHardwareView.tsx# Emulación del chasis físico, LEDs y puertos RJ-45
-│   │   ├── NetworkCliTerminal.tsx# Emulador de terminal CLI Cisco / Linux
-│   │   ├── PacketSnifferView.tsx # Analizador de protocolos y tramas OSI
-│   │   ├── TroubleshootingLab.tsx# Taller de averías y casos helpdesk
-│   │   ├── ActivityLogDrawer.tsx # Registro desplegable de auditoría en vivo
-│   │   └── AuditReportModal.tsx  # Generador de informes de seguridad y exportación
-│   ├── hooks/
-│   │   └── useTheme.ts           # Hook personalizado para modo claro/oscuro con localStorage
-│   ├── types/                    # Tipos TypeScript para estado del router, paquetes y reglas
-│   ├── App.tsx                   # Componente raíz y orquestación del estado global
-│   ├── main.tsx                  # Punto de entrada de React
-│   └── index.css                 # Import de Tailwind v4 y variables CSS dinámicas
-├── .gitignore                    # Filtros de exclusión para Git
-├── LICENSE                       # Licencia de código abierto MIT
-├── package.json                  # Dependencias y scripts del proyecto
-├── tsconfig.json                 # Configuración del compilador TypeScript
-└── vite.config.ts                # Configuración de compilación Vite
+│   │   ├── Header.tsx                  # Cabecera, selector de tema y navegación en 2 filas
+│   │   ├── NetworkCliTerminal.tsx      # Interfaz de la terminal
+│   │   ├── PacketSnifferView.tsx       # Analizador de paquetes por capas OSI
+│   │   ├── TroubleshootingLab.tsx      # Taller de averías
+│   │   ├── VulnerabilityScanner.tsx    # Escáner con autorreparación
+│   │   ├── RouterHardwareView.tsx      # Chasis físico, LEDs y puertos RJ-45
+│   │   ├── ActivityLogDrawer.tsx       # Registro de actividad
+│   │   ├── AuditReportModal.tsx        # Informe de auditoría imprimible
+│   │   └── ErrorBoundary.tsx           # Recuperación si una pestaña falla al cargar
+│   ├── simulation/
+│   │   ├── networkEngine.ts            # Motor: DHCP, QoS, Wi-Fi, DoS y auditoría de seguridad
+│   │   ├── cliEngine.ts                # Comandos de la terminal y de la consola del router
+│   │   └── netUtils.ts                 # Utilidades IPv4, subredes, DNS y pool DHCP
+│   ├── data/                           # Configuración por defecto, equipos, misiones, glosario
+│   ├── hooks/useTheme.ts               # Tema claro / oscuro / sistema con localStorage
+│   ├── types/router.ts                 # Tipos del estado del router
+│   ├── App.tsx                         # Estado global y bucle de simulación
+│   └── index.css                       # Tailwind v4 y paleta del tema claro
+├── package.json
+├── bun.lock
+├── tsconfig.json
+└── vite.config.ts                      # base './' para servirse desde cualquier subruta
 ```
 
 ---
@@ -195,38 +204,49 @@ netsim-router-lab/
 ## 🚀 Instalación y Puesta en Marcha
 
 ### Prerrequisitos
-- [Node.js](https://nodejs.org/) v18.0.0 o superior
-- [npm](https://www.npmjs.com/) v9+ (o `pnpm` / `bun` / `yarn`)
+- [Bun](https://bun.sh/) 1.x (recomendado: el proyecto incluye `bun.lock`) o [Node.js](https://nodejs.org/) 20+ con npm
 
 ### Pasos
 
 1. **Clonar el repositorio:**
    ```bash
-   git clone https://github.com/unfantasmaenelsistema/netsim-router-lab.git
-   cd netsim-router-lab
+   git clone https://github.com/unfantasmaenelsistema/NetSim-Router-Lab.git
+   cd NetSim-Router-Lab
    ```
 
 2. **Instalar dependencias:**
    ```bash
-   npm install
+   bun install
    ```
 
 3. **Iniciar servidor de desarrollo:**
    ```bash
-   npm run dev
+   bun run dev
    ```
    Abre tu navegador en [http://localhost:3000](http://localhost:3000).
 
 4. **Compilar para producción:**
    ```bash
-   npm run build
+   bun run build
    ```
-   Los archivos optimizados se generarán en la carpeta `dist/`.
+   Los archivos optimizados se generan en `dist/` con rutas relativas, así que puedes subir esa carpeta a cualquier hosting estático o subcarpeta.
 
-5. **Validar tipos con linter:**
+5. **Validar tipos:**
    ```bash
-   npm run lint
+   bun run lint
    ```
+
+Con npm los comandos equivalentes son `npm install`, `npm run dev`, `npm run build` y `npm run lint`.
+
+---
+
+## 🌍 Despliegue
+
+Cada push a `main` ejecuta [`.github/workflows/ci.yml`](.github/workflows/ci.yml): comprobación de tipos, build con Vite y publicación automática en **GitHub Pages**:
+
+**https://unfantasmaenelsistema.github.io/NetSim-Router-Lab/**
+
+Los pull requests solo pasan el typecheck y el build (no despliegan).
 
 ---
 

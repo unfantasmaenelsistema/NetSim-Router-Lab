@@ -1,27 +1,63 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { RouterConfig, VirtualDevice, NetworkTelemetry } from '../types/router';
-import { Terminal, Send, Trash2, HelpCircle, Laptop, Globe, Sparkles, RefreshCw } from 'lucide-react';
+import { Terminal, Send } from 'lucide-react';
+import { autocomplete, executeCli, ROUTER_CONSOLE_ID } from '../simulation/cliEngine';
 
 interface Props {
   config: RouterConfig;
   devices: VirtualDevice[];
   telemetry: NetworkTelemetry;
+  isRebooting: boolean;
+  onReboot: () => void;
   onOpenTopic: (topicId: string) => void;
 }
 
 interface CommandHistoryItem {
   id: string;
   command: string;
+  prompt: string;
   output: string[];
   timestamp: string;
   isError?: boolean;
+}
+
+interface QuickCommand {
+  cmd: string;
+  color: string;
+  title?: string;
+}
+
+const CLIENT_QUICK_COMMANDS: QuickCommand[] = [
+  { cmd: 'ping gateway', color: 'text-sky-300' },
+  { cmd: 'ping 8.8.8.8', color: 'text-sky-300' },
+  { cmd: 'traceroute 8.8.8.8', color: 'text-indigo-300' },
+  { cmd: 'nslookup google.com', color: 'text-emerald-300' },
+  { cmd: 'nslookup tiktok.com', color: 'text-amber-300', title: 'Prueba de Control Parental' },
+  { cmd: 'arp -a', color: 'text-purple-300' },
+  { cmd: 'ipconfig', color: 'text-slate-300' }
+];
+
+const ROUTER_QUICK_COMMANDS: QuickCommand[] = [
+  { cmd: 'show ip interface brief', color: 'text-sky-300' },
+  { cmd: 'show dhcp leases', color: 'text-emerald-300' },
+  { cmd: 'iptables -L -n -v', color: 'text-rose-300' },
+  { cmd: 'iptables -t nat -L -n -v', color: 'text-amber-300' },
+  { cmd: 'netstat -tuln', color: 'text-indigo-300' },
+  { cmd: 'wifi-status', color: 'text-purple-300' },
+  { cmd: 'show arp', color: 'text-slate-300' }
+];
+
+function promptFor(device: VirtualDevice | null, config: RouterConfig): string {
+  if (!device) return `${config.modelName.split(' ').slice(0, 2).join('-')}#`;
+  return `usuario@${device.name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}:~$`;
 }
 
 export const NetworkCliTerminal: React.FC<Props> = ({
   config,
   devices,
   telemetry,
-  onOpenTopic
+  isRebooting,
+  onReboot
 }) => {
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('dev-pc-gamer');
   const [inputCommand, setInputCommand] = useState('');
@@ -31,11 +67,13 @@ export const NetworkCliTerminal: React.FC<Props> = ({
     {
       id: 'init-1',
       command: 'system-banner',
+      prompt: '',
       output: [
         '==============================================================',
-        '   NETSIM INTERACTIVE NETWORK CLI - TERMINAL DE CLIENTE',
+        '   NETSIM INTERACTIVE NETWORK CLI',
         '   Consola de diagnóstico de red y resolución de problemas.',
-        '   Escribe "help" para ver la lista de comandos disponibles.',
+        '   Escribe "help" para ver los comandos disponibles.',
+        '   Elige "Consola del Router" para comandos de administración.',
         '=============================================================='
       ],
       timestamp: new Date().toLocaleTimeString()
@@ -45,225 +83,62 @@ export const NetworkCliTerminal: React.FC<Props> = ({
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const selectedDevice = devices.find(d => d.id === selectedDeviceId) || devices[0];
+  const isRouterConsole = selectedDeviceId === ROUTER_CONSOLE_ID;
+  // Si el equipo seleccionado se elimina del laboratorio, volvemos a la consola del router
+  const selectedDevice = isRouterConsole ? null : devices.find(d => d.id === selectedDeviceId) || null;
+  const effectiveRouter = isRouterConsole || !selectedDevice;
+  const prompt = promptFor(effectiveRouter ? null : selectedDevice, config);
 
   useEffect(() => {
-    terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    terminalEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [terminalOutput]);
+
+  const appendOutput = (command: string, output: string[], isError?: boolean) => {
+    setTerminalOutput(prev => [
+      ...prev,
+      {
+        id: `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        command,
+        prompt,
+        output,
+        timestamp: new Date().toLocaleTimeString(),
+        isError
+      }
+    ]);
+  };
 
   const handleExecuteCommand = (cmdToRun?: string) => {
     const rawCmd = (cmdToRun !== undefined ? cmdToRun : inputCommand).trim();
     if (!rawCmd) return;
 
-    const parts = rawCmd.split(/\s+/);
-    const command = parts[0].toLowerCase();
-    const args = parts.slice(1);
-    const timeStr = new Date().toLocaleTimeString();
-
-    // Add to history
     setCommandHistory(prev => [rawCmd, ...prev]);
     setHistoryIndex(-1);
-
-    let outputLines: string[] = [];
-    let isError = false;
-
-    if (!selectedDevice.isOnline && command !== 'help' && command !== 'clear') {
-      outputLines = [
-        `error: Interfaz de red desactivada o sin conexión.`,
-        `Estado actual: ${selectedDevice.statusLog}`,
-        `Conecta el dispositivo a Ethernet o Wi-Fi para enviar tráfico.`
-      ];
-      isError = true;
-    } else {
-      switch (command) {
-        case 'help':
-          outputLines = [
-            'Comandos de Red Disponibles:',
-            '  ping <ip|host>         - Prueba de conectividad ICMP Echo y tiempo de ida y vuelta (RTT)',
-            '  traceroute <ip|host>   - Muestra la ruta de saltos (hops) hasta el destino',
-            '  nslookup <dominio>     - Consulta al servidor DNS configurado en el router',
-            '  arp -a                 - Muestra la tabla ARP (correspondencia IP y MAC de la subred)',
-            '  ipconfig / ifconfig    - Muestra la configuración IP, máscara, gateway y DNS del host',
-            '  curl -I <url>          - Envía una petición HTTP HEAD (prueba de firewall y control parental)',
-            '  speedtest              - Ejecuta una prueba de velocidad con el servidor WAN',
-            '  clear                  - Limpia la pantalla de la terminal'
-          ];
-          break;
-
-        case 'clear':
-        case 'cls':
-          setTerminalOutput([]);
-          setInputCommand('');
-          return;
-
-        case 'ipconfig':
-        case 'ifconfig':
-          outputLines = [
-            `Configuración IP de Windows/Linux para el host [${selectedDevice.name}]:`,
-            ``,
-            `  Adaptador de red        : ${selectedDevice.connectionType.replace('_', ' ').toUpperCase()}`,
-            `  Dirección IPv4          : ${selectedDevice.ip}`,
-            `  Máscara de subred       : ${config.lanSubnetMask}`,
-            `  Puerta de enlace (GW)   : ${config.lanIp}`,
-            `  Dirección física (MAC)  : ${selectedDevice.mac}`,
-            `  Servidores DNS          : ${config.wanDnsMode === 'Custom' ? `${config.wanPrimaryDns}, ${config.wanSecondaryDns}` : config.wanPrimaryDns}`,
-            `  Estado de concesión     : ${config.dhcpEnabled ? 'DHCP Automático' : 'Configuración Estática'}`,
-            `  Ping de enlace local    : ${selectedDevice.currentLatencyMs} ms`
-          ];
-          break;
-
-        case 'arp':
-          outputLines = [
-            `Tabla ARP de la interfaz (${selectedDevice.ip}):`,
-            `  Dirección IP         Dirección Física (MAC)    Tipo`,
-            `  -------------------------------------------------------------`,
-            `  ${config.lanIp.padEnd(20)} 00:90:A9:7B:44:01          Dinámico (Gateway)`
-          ];
-          devices.filter(d => d.id !== selectedDevice.id && d.isOnline).forEach(d => {
-            outputLines.push(`  ${d.ip.padEnd(20)} ${d.mac}          Dinámico (${d.name.slice(0, 15)})`);
-          });
-          break;
-
-        case 'ping': {
-          const target = args[0] || config.lanIp;
-          const isGateway = target === config.lanIp || target === '192.168.1.1' || target === 'gateway';
-          const isInternet = target.includes('8.8.8.8') || target.includes('1.1.1.1') || target.includes('google');
-
-          const baseLat = isGateway ? (selectedDevice.connectionType.startsWith('ethernet') ? 1 : 12) : selectedDevice.currentLatencyMs;
-          const packetLoss = selectedDevice.packetLossPercent;
-
-          outputLines = [
-            `Haciendo ping a ${target} con 32 bytes de datos:`,
-            `Respuesta desde ${target}: bytes=32 tiempo=${baseLat}ms TTL=64`,
-            `Respuesta desde ${target}: bytes=32 tiempo=${baseLat + 1}ms TTL=64`,
-            `Respuesta desde ${target}: bytes=32 tiempo=${Math.max(1, baseLat - 1)}ms TTL=64`,
-            `Respuesta desde ${target}: bytes=32 tiempo=${baseLat + 2}ms TTL=64`,
-            ``,
-            `Estadísticas de ping para ${target}:`,
-            `    Paquetes: enviados = 4, recibidos = ${packetLoss > 20 ? 2 : 4}, perdidos = ${packetLoss > 20 ? 2 : 0} (${packetLoss}% perdidos)`,
-            `Tiempos aproximados de ida y vuelta en milisegundos:`,
-            `    Mínimo = ${Math.max(1, baseLat - 1)}ms, Máximo = ${baseLat + 2}ms, Media = ${baseLat}ms`
-          ];
-
-          if (baseLat > 100) {
-            outputLines.push(
-              `[AVISO DIDÁCTICO]: La latencia es alta (${baseLat}ms) debido a congestión de buffers (Bufferbloat). Activa QoS para reducirla.`
-            );
-          }
-          break;
-        }
-
-        case 'traceroute':
-        case 'tracert': {
-          const target = args[0] || '8.8.8.8';
-          const hop1 = selectedDevice.connectionType.startsWith('ethernet') ? '1 ms' : '8 ms';
-          const hop2 = `${selectedDevice.currentLatencyMs - 4} ms`;
-          const hop3 = `${selectedDevice.currentLatencyMs} ms`;
-
-          outputLines = [
-            `Traza a la dirección ${target} sobre un máximo de 30 saltos:`,
-            ``,
-            `  1    ${hop1}    ${hop1}    ${hop1}   ${config.lanIp} [Router Gateway Local]`,
-            `  2    ${hop2}    ${hop2}    ${hop2}   ${config.wanGateway} [Nodo Agregador ISP Fibra]`,
-            `  3    ${hop3}    ${hop3}    ${hop3}   185.220.100.254 [Backbone Red Principal]`,
-            `  4    ${hop3}    ${hop3}    ${hop3}   ${target} [Destino Alcanzado]`,
-            ``,
-            `Traza completa con éxito.`
-          ];
-          break;
-        }
-
-        case 'nslookup':
-        case 'dig': {
-          const domain = args[0] || 'google.com';
-          const isBlockedByParental = config.parentalControlEnabled && config.blockedDomains.some(d => d.enabled && domain.includes(d.domain));
-
-          outputLines = [
-            `Servidor:   ${config.wanDnsMode === 'Custom' ? config.wanPrimaryDns : config.lanIp}`,
-            `Address:    ${config.wanDnsMode === 'Custom' ? config.wanPrimaryDns : config.lanIp}#53`,
-            ``
-          ];
-
-          if (isBlockedByParental) {
-            outputLines.push(
-              `** Servidor no puede encontrar ${domain}: Dominio bloqueado por Control Parental local (NXDOMAIN)`
-            );
-            outputLines.push(
-              `[DIDÁCTICA]: El router interceptó la consulta DNS hacia "${domain}" y devolvió respuesta de bloqueo.`
-            );
-          } else {
-            outputLines.push(
-              `Respuesta no autoritativa:`,
-              `Nombre:   ${domain}`,
-              `Address:  142.250.200.14`,
-              `Address:  2a00:1450:4003:80d::200e`
-            );
-          }
-          break;
-        }
-
-        case 'curl': {
-          const url = args.find(a => a.startsWith('http')) || args[0] || 'http://example.com';
-          const isBlocked = config.parentalControlEnabled && config.blockedDomains.some(d => d.enabled && url.includes(d.domain));
-
-          if (isBlocked) {
-            outputLines = [
-              `HTTP/1.1 403 Forbidden`,
-              `Server: NetSim-ParentalFilter/1.0`,
-              `Content-Type: text/html`,
-              ``,
-              `<!DOCTYPE html><html><body><h1>Acceso Bloqueado por Control Parental</h1></body></html>`
-            ];
-          } else {
-            outputLines = [
-              `HTTP/1.1 200 OK`,
-              `Date: ${new Date().toUTCString()}`,
-              `Server: Apache/2.4.52`,
-              `Content-Type: text/html; charset=UTF-8`,
-              `Content-Length: 1256`,
-              `Connection: keep-alive`
-            ];
-          }
-          break;
-        }
-
-        case 'speedtest':
-          outputLines = [
-            `Iniciando prueba de velocidad hacia el servidor Speedtest más cercano...`,
-            `Conectando a servidor de prueba vía WAN (${config.wanIp})...`,
-            `Ping de descarga: ${selectedDevice.currentLatencyMs} ms  | Jitter: 2.4 ms`,
-            `Velocidad de Bajada : ${selectedDevice.currentDownloadMbps} Mbps`,
-            `Velocidad de Subida : ${selectedDevice.currentUploadMbps} Mbps`,
-            `Capacidad contratada: ${config.qosTotalDownlinkMbps} Mbps Bajada / ${config.qosTotalUplinkMbps} Mbps Subida`
-          ];
-          break;
-
-        default:
-          outputLines = [
-            `Comando no reconocido: "${command}".`,
-            `Escribe "help" para ver la lista de comandos disponibles.`
-          ];
-          isError = true;
-      }
-    }
-
-    setTerminalOutput(prev => [
-      ...prev,
-      {
-        id: `cmd-${Date.now()}`,
-        command: rawCmd,
-        output: outputLines,
-        timestamp: timeStr,
-        isError
-      }
-    ]);
-
     setInputCommand('');
+
+    const result = executeCli(rawCmd, {
+      config,
+      devices,
+      telemetry,
+      isRebooting,
+      source: effectiveRouter ? null : selectedDevice
+    });
+
+    if (result.action === 'clear') {
+      setTerminalOutput([]);
+      return;
+    }
+    appendOutput(rawCmd, result.lines, result.isError);
+    if (result.action === 'reboot') onReboot();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       handleExecuteCommand();
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      const { completed, candidates } = autocomplete(inputCommand, effectiveRouter);
+      if (completed) setInputCommand(completed);
+      if (!completed && candidates.length > 1) appendOutput(inputCommand, [candidates.join('    ')]);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       if (commandHistory.length > 0) {
@@ -284,6 +159,8 @@ export const NetworkCliTerminal: React.FC<Props> = ({
     }
   };
 
+  const quickCommands = effectiveRouter ? ROUTER_QUICK_COMMANDS : CLIENT_QUICK_COMMANDS;
+
   return (
     <div data-terminal-container="true" className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
       {/* Header and Device Switcher */}
@@ -294,25 +171,26 @@ export const NetworkCliTerminal: React.FC<Props> = ({
               <Terminal className="w-5 h-5" />
             </div>
             <h3 className="text-base font-bold text-white tracking-tight">
-              Terminal Interactiva de Red (CLI de Clientes)
+              Terminal Interactiva de Red
             </h3>
           </div>
           <p className="text-xs text-slate-400">
-            Ejecuta comandos reales de diagnóstico (ping, traceroute, nslookup, arp, curl) desde cualquier dispositivo de la casa.
+            Diagnostica desde cualquier equipo de la casa (ping, traceroute, nslookup, arp, curl) o administra el router desde su consola (show, iptables, netstat).
           </p>
         </div>
 
         {/* Device selector */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-400 font-semibold hidden sm:inline">Dispositivo Activo:</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xs text-slate-400 font-semibold hidden sm:inline shrink-0">Ejecutar en:</span>
           <select
-            value={selectedDeviceId}
+            value={effectiveRouter ? ROUTER_CONSOLE_ID : selectedDeviceId}
             onChange={(e) => setSelectedDeviceId(e.target.value)}
-            className="bg-slate-950 border border-slate-750 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+            className="min-w-0 max-w-full bg-slate-950 border border-slate-750 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
           >
+            <option value={ROUTER_CONSOLE_ID}>Consola del Router ({config.lanIp})</option>
             {devices.map(d => (
               <option key={d.id} value={d.id}>
-                {d.name} ({d.isOnline ? d.ip : 'Offline'})
+                {d.name} ({d.isOnline ? d.ip : 'sin conexión'})
               </option>
             ))}
           </select>
@@ -322,56 +200,17 @@ export const NetworkCliTerminal: React.FC<Props> = ({
       {/* Quick Action Commands Strip */}
       <div className="flex flex-wrap items-center gap-1.5 text-xs bg-slate-950 p-2 rounded-lg border border-slate-800">
         <span className="text-slate-400 font-mono text-[11px] mr-1">Comandos Rápidos:</span>
-        <button
-          type="button"
-          onClick={() => handleExecuteCommand('ping 192.168.1.1')}
-          className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-850 border border-slate-800 text-sky-300 font-mono text-[11px] cursor-pointer"
-        >
-          ping 192.168.1.1
-        </button>
-        <button
-          type="button"
-          onClick={() => handleExecuteCommand('ping 8.8.8.8')}
-          className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-850 border border-slate-800 text-sky-300 font-mono text-[11px] cursor-pointer"
-        >
-          ping 8.8.8.8
-        </button>
-        <button
-          type="button"
-          onClick={() => handleExecuteCommand('traceroute 8.8.8.8')}
-          className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-850 border border-slate-800 text-indigo-300 font-mono text-[11px] cursor-pointer"
-        >
-          traceroute 8.8.8.8
-        </button>
-        <button
-          type="button"
-          onClick={() => handleExecuteCommand('nslookup google.com')}
-          className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-850 border border-slate-800 text-emerald-300 font-mono text-[11px] cursor-pointer"
-        >
-          nslookup google.com
-        </button>
-        <button
-          type="button"
-          onClick={() => handleExecuteCommand('nslookup tiktok.com')}
-          className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-850 border border-slate-800 text-amber-300 font-mono text-[11px] cursor-pointer"
-          title="Prueba de Control Parental"
-        >
-          nslookup tiktok.com (Parental)
-        </button>
-        <button
-          type="button"
-          onClick={() => handleExecuteCommand('arp -a')}
-          className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-850 border border-slate-800 text-purple-300 font-mono text-[11px] cursor-pointer"
-        >
-          arp -a
-        </button>
-        <button
-          type="button"
-          onClick={() => handleExecuteCommand('ipconfig')}
-          className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 font-mono text-[11px] cursor-pointer"
-        >
-          ipconfig
-        </button>
+        {quickCommands.map(q => (
+          <button
+            key={q.cmd}
+            type="button"
+            onClick={() => handleExecuteCommand(q.cmd)}
+            title={q.title}
+            className={`px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-850 border border-slate-800 ${q.color} font-mono text-[11px] cursor-pointer`}
+          >
+            {q.cmd}
+          </button>
+        ))}
       </div>
 
       {/* Terminal Screen */}
@@ -382,18 +221,25 @@ export const NetworkCliTerminal: React.FC<Props> = ({
         {terminalOutput.map(item => (
           <div key={item.id} className="space-y-1">
             {item.command !== 'system-banner' && (
-              <div className="flex items-center gap-2 text-sky-400">
-                <span className="text-emerald-400 font-bold">
-                  root@{selectedDevice.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}:~#
-                </span>
-                <span className="text-white font-bold">{item.command}</span>
-                <span className="text-[10px] text-slate-600 ml-auto">{item.timestamp}</span>
+              <div className="flex items-center gap-2 text-sky-400 min-w-0">
+                <span className="text-emerald-400 font-bold shrink-0">{item.prompt}</span>
+                <span className="text-white font-bold break-all">{item.command}</span>
+                <span className="text-[10px] text-slate-600 ml-auto shrink-0">{item.timestamp}</span>
               </div>
             )}
-            <div className={`space-y-0.5 leading-relaxed pl-1 ${item.isError ? 'text-rose-400' : 'text-slate-300'}`}>
+            <div className={`space-y-0.5 leading-relaxed pl-1 overflow-x-auto ${item.isError ? 'text-rose-400' : 'text-slate-300'}`}>
               {item.output.map((line, lIdx) => (
-                <div key={lIdx} className={line.includes('**') ? 'text-rose-400 font-bold' : ''}>
-                  {line}
+                <div
+                  key={lIdx}
+                  className={`whitespace-pre ${
+                    line.startsWith('**') || line.startsWith('[AVISO')
+                      ? 'text-amber-300 font-semibold'
+                      : line.startsWith('[DIDÁCTICA]')
+                      ? 'text-sky-300'
+                      : ''
+                  }`}
+                >
+                  {line || ' '}
                 </div>
               ))}
             </div>
@@ -403,18 +249,19 @@ export const NetworkCliTerminal: React.FC<Props> = ({
       </div>
 
       {/* Input Prompt Box */}
-      <div className="flex items-center gap-2 bg-slate-950 border border-slate-750 rounded-xl px-3 py-2 shadow-inner focus-within:border-sky-500 transition-colors">
-        <span className="font-mono text-xs text-emerald-400 font-bold shrink-0">
-          root@{selectedDevice.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}:~#
-        </span>
+      <div className="flex items-center gap-2 bg-slate-950 border border-slate-750 rounded-xl px-3 py-2 shadow-inner focus-within:border-sky-500 transition-colors min-w-0">
+        <span className="font-mono text-xs text-emerald-400 font-bold shrink-0 max-w-[45%] truncate">{prompt}</span>
         <input
           ref={inputRef}
           type="text"
           value={inputCommand}
           onChange={(e) => setInputCommand(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Escribe un comando (ej. ping 8.8.8.8, nslookup google.com, arp -a)..."
-          className="flex-1 bg-transparent text-xs text-white font-mono focus:outline-none"
+          aria-label="Comando"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={effectiveRouter ? 'ej. show ip interface brief, iptables -L -n -v (Tab autocompleta)' : 'ej. ping 8.8.8.8, nslookup google.com (Tab autocompleta)'}
+          className="flex-1 min-w-0 bg-transparent text-xs text-white font-mono focus:outline-none"
         />
         <button
           type="button"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { RouterConfig, VirtualDevice, NetworkTelemetry, SystemLogEntry } from './types/router';
 import { INITIAL_ROUTER_CONFIG } from './data/defaultRouterConfig';
 import { INITIAL_VIRTUAL_DEVICES } from './data/defaultDevices';
@@ -11,20 +11,38 @@ import { Header, ActiveTab } from './components/Header';
 import { EducationalModal } from './components/EducationalModal';
 import { ActivityLogDrawer } from './components/ActivityLogDrawer';
 import { AuditReportModal } from './components/AuditReportModal';
-import { NetworkCliTerminal } from './components/NetworkCliTerminal';
-import { PacketSnifferView } from './components/PacketSnifferView';
-import { TroubleshootingLab } from './components/TroubleshootingLab';
+import { TroubleshootingLab, TroubleshootingStatus } from './components/TroubleshootingLab';
 import { DashboardTab } from './components/tabs/DashboardTab';
-import { WirelessTab } from './components/tabs/WirelessTab';
-import { NetworkLanTab } from './components/tabs/NetworkLanTab';
-import { SecurityFirewallTab } from './components/tabs/SecurityFirewallTab';
-import { PortForwardingTab } from './components/tabs/PortForwardingTab';
-import { QosTab } from './components/tabs/QosTab';
-import { VirtualDevicesTab } from './components/tabs/VirtualDevicesTab';
-import { SecurityLabTab } from './components/tabs/SecurityLabTab';
-import { MissionsTab } from './components/tabs/MissionsTab';
-import { GlossaryTab } from './components/tabs/GlossaryTab';
 import { useTheme } from './hooks/useTheme';
+import { ErrorBoundary } from './components/ErrorBoundary';
+
+// Las pestañas secundarias se cargan bajo demanda para aligerar la carga inicial
+const NetworkCliTerminal = lazy(() => import('./components/NetworkCliTerminal').then(m => ({ default: m.NetworkCliTerminal })));
+const PacketSnifferView = lazy(() => import('./components/PacketSnifferView').then(m => ({ default: m.PacketSnifferView })));
+const WirelessTab = lazy(() => import('./components/tabs/WirelessTab').then(m => ({ default: m.WirelessTab })));
+const NetworkLanTab = lazy(() => import('./components/tabs/NetworkLanTab').then(m => ({ default: m.NetworkLanTab })));
+const SecurityFirewallTab = lazy(() => import('./components/tabs/SecurityFirewallTab').then(m => ({ default: m.SecurityFirewallTab })));
+const PortForwardingTab = lazy(() => import('./components/tabs/PortForwardingTab').then(m => ({ default: m.PortForwardingTab })));
+const QosTab = lazy(() => import('./components/tabs/QosTab').then(m => ({ default: m.QosTab })));
+const VirtualDevicesTab = lazy(() => import('./components/tabs/VirtualDevicesTab').then(m => ({ default: m.VirtualDevicesTab })));
+const SecurityLabTab = lazy(() => import('./components/tabs/SecurityLabTab').then(m => ({ default: m.SecurityLabTab })));
+const MissionsTab = lazy(() => import('./components/tabs/MissionsTab').then(m => ({ default: m.MissionsTab })));
+const GlossaryTab = lazy(() => import('./components/tabs/GlossaryTab').then(m => ({ default: m.GlossaryTab })));
+
+function hostapdSecurityLine(mode: RouterConfig['wifi24Security']): string {
+  switch (mode) {
+    case 'none':
+      return 'hostapd: auth_algs=1, wpa=0 (red ABIERTA, sin cifrado)';
+    case 'wep':
+      return 'hostapd: auth_algs=3, wep_default_key=0 (WEP-RC4, obsoleto)';
+    case 'wpa2':
+      return 'hostapd: wpa=2, wpa_key_mgmt=WPA-PSK, rsn_pairwise=CCMP';
+    case 'wpa3':
+      return 'hostapd: wpa=2, wpa_key_mgmt=SAE, ieee80211w=2 (MFP obligatorio), rsn_pairwise=CCMP';
+    case 'wpa2_wpa3':
+      return 'hostapd: wpa=2, wpa_key_mgmt=WPA-PSK SAE, ieee80211w=1 (modo de transición), rsn_pairwise=CCMP';
+  }
+}
 
 export default function App() {
   // Theme state (claro / oscuro / sistema) with localStorage persistence
@@ -50,6 +68,12 @@ export default function App() {
   // Activity Log State
   const [logs, setLogs] = useState<SystemLogEntry[]>(INITIAL_SYSTEM_LOGS);
   const [isActivityLogOpen, setIsActivityLogOpen] = useState<boolean>(false);
+  // Número de entradas que el usuario ya ha visto (las nuevas se añaden al principio)
+  const [seenLogsCount, setSeenLogsCount] = useState<number>(0);
+  const unreadLogsCount = isActivityLogOpen ? 0 : Math.max(0, logs.length - seenLogsCount);
+
+  // Progreso del Taller de Averías (se conserva al cambiar de pestaña)
+  const [troubleshootingStatus, setTroubleshootingStatus] = useState<TroubleshootingStatus>({});
 
   // Executive Security Audit Report Modal
   const [isAuditReportOpen, setIsAuditReportOpen] = useState<boolean>(false);
@@ -103,7 +127,13 @@ export default function App() {
       }
 
       const result = runSimulationTick(curConfig, curDevices, curDos);
-      setDevices(result.updatedDevices);
+      // Solo se sustituyen los equipos que no han cambiado desde que se tomó la instantánea:
+      // así una edición del usuario hecha durante el tick no se pierde (se simula en el siguiente).
+      const snapshot = new Map(curDevices.map((d, i) => [d.id, { before: d, after: result.updatedDevices[i] }]));
+      setDevices(prev => prev.map(d => {
+        const entry = snapshot.get(d.id);
+        return entry && entry.before === d ? entry.after : d;
+      }));
       setCurrentTelemetry(result.telemetry);
       setSecurityAudit(result.securityAudit);
       setTelemetryHistory(prev => [...prev.slice(-30), result.telemetry]);
@@ -144,7 +174,7 @@ export default function App() {
         level: 'config',
         source: 'Wi-Fi AP',
         message: `Modo de cifrado 2.4 GHz cambiado a: ${newConfig.wifi24Security.toUpperCase()}`,
-        technicalDetails: `hostapd: auth_algs=1, wpa=${newConfig.wifi24Security === 'wpa3' ? '3' : '2'}, rsn_pairwise=CCMP`,
+        technicalDetails: hostapdSecurityLine(newConfig.wifi24Security),
         didacticExplanation: 'Actualiza los algoritmos criptográficos con los que los dispositivos negocian la clave de red.'
       });
     }
@@ -154,8 +184,10 @@ export default function App() {
         level: 'config',
         source: 'Wi-Fi AP',
         message: `Modo de cifrado 5 GHz cambiado a: ${newConfig.wifi5Security.toUpperCase()}`,
-        technicalDetails: `hostapd: ieee80211w=2 (Management Frame Protection activado para WPA3-SAE).`,
-        didacticExplanation: 'WPA3 implementa SAE, impidiendo ataques de fuerza bruta offline contra las tramas de autenticación.'
+        technicalDetails: hostapdSecurityLine(newConfig.wifi5Security),
+        didacticExplanation: newConfig.wifi5Security === 'wpa3' || newConfig.wifi5Security === 'wpa2_wpa3'
+          ? 'WPA3 implementa SAE, impidiendo ataques de fuerza bruta offline contra las tramas de autenticación.'
+          : 'Actualiza los algoritmos criptográficos con los que los dispositivos negocian la clave de red.'
       });
     }
 
@@ -254,9 +286,9 @@ export default function App() {
     addSystemLog({
       level: 'network',
       source: 'DHCP Server',
-      message: `Nuevo dispositivo añadido al laboratorio: "${newDevice.name}" (${newDevice.mac}) asignado a ${newDevice.ip}.`,
-      technicalDetails: `dnsmasq: DHCPACK nuevo host registrado en tabla ARP.`,
-      didacticExplanation: 'El router añade la entrada en la tabla ARP para poder resolver IP <-> MAC en la capa 2.'
+      message: `Nuevo dispositivo añadido al laboratorio: "${newDevice.name}" (${newDevice.mac}) solicitando dirección IP por DHCP.`,
+      technicalDetails: `dnsmasq: DHCPDISCOVER from ${newDevice.mac} -> DHCPOFFER -> DHCPREQUEST -> DHCPACK.`,
+      didacticExplanation: 'El servidor DHCP le asigna la primera IP libre del pool y el router añade la entrada en la tabla ARP (IP <-> MAC).'
     });
     showToast(`Dispositivo "${newDevice.name}" conectado a la red`);
   };
@@ -304,6 +336,7 @@ export default function App() {
       setConfig(INITIAL_ROUTER_CONFIG);
       setDevices(INITIAL_VIRTUAL_DEVICES);
       setIsExternalDosAttackActive(false);
+      setTroubleshootingStatus({});
       addSystemLog({
         level: 'warning',
         source: 'Kernel / Sistema',
@@ -415,10 +448,14 @@ export default function App() {
       {/* Activity Log Side Panel Drawer */}
       <ActivityLogDrawer
         isOpen={isActivityLogOpen}
-        onClose={() => setIsActivityLogOpen(false)}
+        onClose={() => {
+          setIsActivityLogOpen(false);
+          setSeenLogsCount(logs.length);
+        }}
         logs={logs}
         onClearLogs={() => {
           setLogs([]);
+          setSeenLogsCount(0);
           showToast('Log de actividad vaciado');
         }}
         onSimulateEvent={handleSimulateEvent}
@@ -443,7 +480,7 @@ export default function App() {
         completedMissionsCount={completedMissionsCount}
         totalMissionsCount={MISSIONS.length}
         onOpenActivityLog={() => setIsActivityLogOpen(true)}
-        unreadLogsCount={logs.length}
+        unreadLogsCount={unreadLogsCount}
         onOpenAuditReport={() => setIsAuditReportOpen(true)}
         themeMode={themeMode}
         setThemeMode={setThemeMode}
@@ -452,6 +489,8 @@ export default function App() {
 
       {/* Main Tab Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
+        <ErrorBoundary key={activeTab}>
+        <Suspense fallback={<div className="py-16 text-center text-xs text-slate-400 font-mono">Cargando módulo...</div>}>
         {activeTab === 'dashboard' && (
           <DashboardTab
             config={config}
@@ -537,6 +576,8 @@ export default function App() {
             config={config}
             devices={devices}
             telemetry={currentTelemetry}
+            isRebooting={isRebooting}
+            onReboot={handleReboot}
             onOpenTopic={setActiveEducationalTopic}
           />
         )}
@@ -556,6 +597,8 @@ export default function App() {
             onUpdateConfig={handleUpdateConfig}
             onNavigateTab={setActiveTab}
             onOpenTopic={setActiveEducationalTopic}
+            status={troubleshootingStatus}
+            onStatusChange={setTroubleshootingStatus}
           />
         )}
 
@@ -571,6 +614,8 @@ export default function App() {
         {activeTab === 'glossary' && (
           <GlossaryTab />
         )}
+        </Suspense>
+        </ErrorBoundary>
       </main>
 
       {/* Footer */}
@@ -588,7 +633,7 @@ export default function App() {
               >
                 <div className="w-14 h-14 rounded-2xl bg-slate-950 border border-slate-750 flex items-center justify-center p-1.5 shadow-inner group-hover:border-sky-500/60 transition-colors">
                   <img
-                    src="/icono.png"
+                    src={`${import.meta.env.BASE_URL}icono.png`}
                     alt="Logo Un Fantasma en el Sistema"
                     className="w-full h-full object-contain aspect-square"
                     referrerPolicy="no-referrer"

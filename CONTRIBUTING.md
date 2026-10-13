@@ -11,13 +11,14 @@ Este proyecto es una herramienta educativa de código abierto diseñada para ens
 1. Haz un **Fork** del repositorio en GitHub.
 2. Clona tu fork localmente:
    ```bash
-   git clone https://github.com/tu-usuario/netsim-router-lab.git
-   cd netsim-router-lab
+   git clone https://github.com/tu-usuario/NetSim-Router-Lab.git
+   cd NetSim-Router-Lab
    ```
 3. Instala las dependencias:
    ```bash
-   npm install
+   bun install
    ```
+   (el repositorio usa `bun.lock`; con npm también funciona `npm install`)
 4. Crea una rama para tu funcionalidad o corrección:
    ```bash
    git checkout -b feature/nueva-funcionalidad
@@ -31,8 +32,8 @@ Este proyecto es una herramienta educativa de código abierto diseñada para ens
 - **Estilos:** Utiliza las clases utilitarias de Tailwind CSS.
 - **Validación:** Antes de enviar tu PR, asegúrate de que el código compila y pasa el linter:
   ```bash
-  npm run lint
-  npm run build
+  bun run lint
+  bun run build
   ```
 
 ---
@@ -40,7 +41,7 @@ Este proyecto es una herramienta educativa de código abierto diseñada para ens
 ## 📬 Reportar Errores (Issues)
 
 Si encuentras un error o tienes una idea para mejorar:
-1. Revisa las [Issues existentes](https://github.com/tu-usuario/netsim-router-lab/issues) para evitar duplicados.
+1. Revisa las [Issues existentes](https://github.com/unfantasmaenelsistema/NetSim-Router-Lab/issues) para evitar duplicados.
 2. Abre una nueva issue describiendo:
    - Pasos para reproducir el fallo.
    - Comportamiento esperado vs obtenido.
