@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* Invert slate palette for a clean, crisp, high-contrast light theme */
+  --color-slate-950: #f8fafc; /* page background */
+  --color-slate-900: #ffffff; /* cards, containers & headers */
+  --color-slate-850: #f1f5f9; /* card hover / secondary backgrounds */
+  --color-slate-800: #e2e8f0; /* card borders & dividers */
+  --color-slate-750: #cbd5e1;
+  --color-slate-700: #cbd5e1; /* secondary borders */
+  --color-slate-600: #94a3b8;
+  --color-slate-500: #64748b; /* muted text */
+  --color-slate-400: #475569; /* secondary text */
+  --color-slate-300: #334155; /* body / tertiary text */
+  --color-slate-200: #1e293b; /* headings */
+  --color-slate-100: #0f172a; /* primary titles / main text */
+  --color-slate-50: #020617;
+}
+
+/* Light mode base body styles */
+:root[data-theme="light"] body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+/* Refined form inputs for light mode */
+:root[data-theme="light"] input,
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea {
+  background-color: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+:root[data-theme="light"] input:focus,
+:root[data-theme="light"] select:focus,
+:root[data-theme="light"] textarea:focus {
+  border-color: #0284c7;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.2);
+}
+
+:root[data-theme="light"] input::placeholder,
+:root[data-theme="light"] textarea::placeholder {
+  color: #94a3b8;
+}
+
+/* Card shadows in light mode for subtle depth */
+:root[data-theme="light"] .bg-slate-900,
+:root[data-theme="light"] header,
+:root[data-theme="light"] footer {
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+}
+
+/* Ensure Network CLI Terminal and Physical Chassis stay dark & authentic */
+:root[data-theme="light"] [data-terminal-container="true"],
+:root[data-theme="light"] [data-hardware-chassis="true"] {
+  --color-slate-950: #020617;
+  --color-slate-900: #0f172a;
+  --color-slate-800: #1e293b;
+  --color-slate-700: #334155;
+  --color-slate-400: #94a3b8;
+  --color-slate-300: #cbd5e1;
+  --color-slate-200: #e2e8f0;
+  --color-slate-100: #f1f5f9;
+}

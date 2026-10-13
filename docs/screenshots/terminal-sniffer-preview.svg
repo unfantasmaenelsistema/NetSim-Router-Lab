@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="1200" height="675">
+  <defs>
+    <linearGradient id="bgGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#020617"/>
+      <stop offset="50%" stop-color="#0a0f1d"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="675" fill="url(#bgGrad3)"/>
+  <rect x="0" y="0" width="1200" height="675" fill="none" stroke="#334155" stroke-width="2"/>
+
+  <!-- Top App Header -->
+  <rect x="20" y="20" width="1160" height="64" rx="12" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+  <circle cx="56" cy="52" r="18" fill="#10b981"/>
+  <path d="M48 50 L53 55 L48 60 M55 60 L64 60" stroke="#ffffff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <text x="86" y="47" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="bold" font-size="20" fill="#f8fafc">Herramientas Didácticas Avanzadas · Sniffer &amp; Terminal CLI</text>
+  <text x="86" y="65" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" fill="#6ee7b7">Inspección de tramas Ethernet/IP/TCP y Emulador de Consola Cisco IOS / Linux</text>
+
+  <!-- Status badges -->
+  <rect x="880" y="38" width="145" height="28" rx="14" fill="#064e3b" stroke="#10b981" stroke-width="1"/>
+  <circle cx="896" cy="52" r="5" fill="#34d399"/>
+  <text x="910" y="56" font-family="sans-serif" font-weight="600" font-size="12" fill="#a7f3d0">SNIFFER: CAPTURA OK</text>
+  
+  <rect x="1040" y="38" width="120" height="28" rx="14" fill="#1e293b"/>
+  <text x="1052" y="56" font-family="sans-serif" font-weight="600" font-size="12" fill="#cbd5e1">Filtro: Todos (14)</text>
+
+  <!-- Left: Packet Sniffer (Wireshark-style) -->
+  <rect x="20" y="96" width="570" height="555" rx="12" fill="#0b1120" stroke="#334155" stroke-width="1.5"/>
+  <text x="36" y="125" font-family="sans-serif" font-weight="700" font-size="14" fill="#38bdf8">🔍 ANALIZADOR DE PROTOCOLOS (PACKET SNIFFER)</text>
+  <text x="36" y="142" font-family="sans-serif" font-size="11" fill="#94a3b8">Captura de paquetes en tiempo real con desglose jerárquico OSI</text>
+
+  <!-- Filter chips -->
+  <rect x="36" y="155" width="45" height="22" rx="4" fill="#0284c7"/>
+  <text x="45" y="170" font-family="sans-serif" font-weight="600" font-size="11" fill="#ffffff">ALL</text>
+
+  <rect x="88" y="155" width="45" height="22" rx="4" fill="#1e293b"/>
+  <text x="97" y="170" font-family="sans-serif" font-size="11" fill="#94a3b8">TCP</text>
+
+  <rect x="140" y="155" width="45" height="22" rx="4" fill="#1e293b"/>
+  <text x="149" y="170" font-family="sans-serif" font-size="11" fill="#94a3b8">UDP</text>
+
+  <rect x="192" y="155" width="50" height="22" rx="4" fill="#1e293b"/>
+  <text x="200" y="170" font-family="sans-serif" font-size="11" fill="#94a3b8">ICMP</text>
+
+  <rect x="248" y="155" width="50" height="22" rx="4" fill="#1e293b"/>
+  <text x="256" y="170" font-family="sans-serif" font-size="11" fill="#94a3b8">DHCP</text>
+
+  <rect x="304" y="155" width="45" height="22" rx="4" fill="#1e293b"/>
+  <text x="312" y="170" font-family="sans-serif" font-size="11" fill="#94a3b8">DNS</text>
+
+  <!-- Packet Table -->
+  <rect x="36" y="188" width="538" height="150" rx="6" fill="#020617" stroke="#1e293b" stroke-width="1"/>
+  
+  <!-- Table Header -->
+  <rect x="36" y="188" width="538" height="26" rx="6" fill="#0f172a"/>
+  <text x="46" y="205" font-family="monospace" font-size="10" fill="#94a3b8">No.</text>
+  <text x="75" y="205" font-family="monospace" font-size="10" fill="#94a3b8">Tiempo</text>
+  <text x="135" y="205" font-family="monospace" font-size="10" fill="#94a3b8">Origen</text>
+  <text x="235" y="205" font-family="monospace" font-size="10" fill="#94a3b8">Destino</text>
+  <text x="335" y="205" font-family="monospace" font-size="10" fill="#94a3b8">Proto</text>
+  <text x="390" y="205" font-family="monospace" font-size="10" fill="#94a3b8">Info</text>
+
+  <!-- Row 1 (Selected) -->
+  <rect x="36" y="214" width="538" height="24" fill="#1e3a8a"/>
+  <text x="46" y="230" font-family="monospace" font-size="10" fill="#ffffff">01</text>
+  <text x="75" y="230" font-family="monospace" font-size="10" fill="#93c5fd">12:30:14</text>
+  <text x="135" y="230" font-family="monospace" font-size="10" fill="#ffffff">192.168.1.102</text>
+  <text x="235" y="230" font-family="monospace" font-size="10" fill="#ffffff">1.1.1.1</text>
+  <text x="335" y="230" font-family="monospace" font-weight="bold" font-size="10" fill="#38bdf8">DNS</text>
+  <text x="390" y="230" font-family="monospace" font-size="10" fill="#cbd5e1">Standard query A github.com</text>
+
+  <!-- Row 2 -->
+  <rect x="36" y="238" width="538" height="24" fill="#020617"/>
+  <text x="46" y="254" font-family="monospace" font-size="10" fill="#64748b">02</text>
+  <text x="75" y="254" font-family="monospace" font-size="10" fill="#64748b">12:30:14</text>
+  <text x="135" y="254" font-family="monospace" font-size="10" fill="#cbd5e1">1.1.1.1</text>
+  <text x="235" y="254" font-family="monospace" font-size="10" fill="#cbd5e1">192.168.1.102</text>
+  <text x="335" y="254" font-family="monospace" font-weight="bold" font-size="10" fill="#38bdf8">DNS</text>
+  <text x="390" y="254" font-family="monospace" font-size="10" fill="#94a3b8">Standard query resp A 140.82.121.4</text>
+
+  <!-- Row 3 -->
+  <rect x="36" y="262" width="538" height="24" fill="#0b1120"/>
+  <text x="46" y="278" font-family="monospace" font-size="10" fill="#64748b">03</text>
+  <text x="75" y="278" font-family="monospace" font-size="10" fill="#64748b">12:30:15</text>
+  <text x="135" y="278" font-family="monospace" font-size="10" fill="#cbd5e1">192.168.1.102</text>
+  <text x="235" y="278" font-family="monospace" font-size="10" fill="#cbd5e1">140.82.121.4</text>
+  <text x="335" y="278" font-family="monospace" font-weight="bold" font-size="10" fill="#10b981">TCP</text>
+  <text x="390" y="278" font-family="monospace" font-size="10" fill="#94a3b8">54210 -> 443 [SYN] Seq=0</text>
+
+  <!-- Row 4 -->
+  <rect x="36" y="286" width="538" height="24" fill="#020617"/>
+  <text x="46" y="302" font-family="monospace" font-size="10" fill="#64748b">04</text>
+  <text x="75" y="302" font-family="monospace" font-size="10" fill="#64748b">12:30:15</text>
+  <text x="135" y="302" font-family="monospace" font-size="10" fill="#cbd5e1">140.82.121.4</text>
+  <text x="235" y="302" font-family="monospace" font-size="10" fill="#cbd5e1">192.168.1.102</text>
+  <text x="335" y="302" font-family="monospace" font-weight="bold" font-size="10" fill="#10b981">TCP</text>
+  <text x="390" y="302" font-family="monospace" font-size="10" fill="#94a3b8">443 -> 54210 [SYN, ACK] Seq=0</text>
+
+  <!-- Row 5 (Blocked Drop) -->
+  <rect x="36" y="310" width="538" height="24" fill="#450a0a"/>
+  <text x="46" y="326" font-family="monospace" font-size="10" fill="#fca5a5">05</text>
+  <text x="75" y="326" font-family="monospace" font-size="10" fill="#fca5a5">12:30:16</text>
+  <text x="135" y="326" font-family="monospace" font-size="10" fill="#fca5a5">203.0.113.50</text>
+  <text x="235" y="326" font-family="monospace" font-size="10" fill="#fca5a5">185.120.45.89</text>
+  <text x="335" y="326" font-family="monospace" font-weight="bold" font-size="10" fill="#ef4444">DROP</text>
+  <text x="390" y="326" font-family="monospace" font-size="10" fill="#fca5a5">Firewall: Port scan detected</text>
+
+  <!-- Detailed Header Inspection (OSI Dissection) -->
+  <rect x="36" y="352" width="538" height="285" rx="8" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/>
+  <text x="50" y="375" font-family="sans-serif" font-weight="700" font-size="12" fill="#38bdf8">DESGLOSE DE CABECERAS OSI (PAQUETE SELECCIONADO #01)</text>
+
+  <!-- Layer 2: Ethernet Frame -->
+  <rect x="50" y="388" width="510" height="65" rx="6" fill="#1e293b"/>
+  <text x="60" y="406" font-family="sans-serif" font-weight="600" font-size="11" fill="#38bdf8">📦 Capa 2: Trama Ethernet II</text>
+  <text x="60" y="424" font-family="monospace" font-size="10" fill="#cbd5e1">MAC Origen: 52:54:00:12:34:56 (Intel NIC) | Destino: BC:24:11:AB:CD:EF</text>
+  <text x="60" y="442" font-family="monospace" font-size="10" fill="#94a3b8">EtherType: 0x0800 (IPv4) | Longitud: 74 bytes</text>
+
+  <!-- Layer 3: IPv4 -->
+  <rect x="50" y="460" width="510" height="75" rx="6" fill="#1e293b"/>
+  <text x="60" y="478" font-family="sans-serif" font-weight="600" font-size="11" fill="#34d399">🌐 Capa 3: Protocolo Internet IPv4</text>
+  <text x="60" y="496" font-family="monospace" font-size="10" fill="#cbd5e1">IP Origen: 192.168.1.102 -> IP Destino: 1.1.1.1 (Cloudflare DNS)</text>
+  <text x="60" y="514" font-family="monospace" font-size="10" fill="#cbd5e1">TTL: 64 | Header Checksum: 0x4a2e [OK] | Protocolo: 17 (UDP)</text>
+  <text x="60" y="528" font-family="monospace" font-size="10" fill="#94a3b8">Flags: 0x4000 (Don't Fragment) | Total Length: 60 bytes</text>
+
+  <!-- Layer 4: UDP / DNS -->
+  <rect x="50" y="542" width="510" height="80" rx="6" fill="#1e293b"/>
+  <text x="60" y="560" font-family="sans-serif" font-weight="600" font-size="11" fill="#f59e0b">⚡ Capa 4/7: UDP &amp; DNS Protocol</text>
+  <text x="60" y="578" font-family="monospace" font-size="10" fill="#cbd5e1">Puerto Origen: 58219 -> Puerto Destino: 53 (DNS Service)</text>
+  <text x="60" y="596" font-family="monospace" font-size="10" fill="#cbd5e1">Transaction ID: 0x3f41 | Queries: 1 | Answers: 0</text>
+  <text x="60" y="612" font-family="monospace" font-size="10" fill="#38bdf8">Query: github.com (Type A, Class IN)</text>
+
+  <!-- Right: Cisco IOS / Linux Terminal CLI Simulator -->
+  <rect x="610" y="96" width="570" height="555" rx="12" fill="#000000" stroke="#334155" stroke-width="1.5"/>
+  
+  <!-- Terminal Title Bar -->
+  <rect x="610" y="96" width="570" height="34" rx="12" fill="#0f172a"/>
+  <circle cx="630" cy="113" r="5" fill="#ef4444"/>
+  <circle cx="645" cy="113" r="5" fill="#f59e0b"/>
+  <circle cx="660" cy="113" r="5" fill="#10b981"/>
+  <text x="680" y="118" font-family="monospace" font-weight="bold" font-size="11" fill="#cbd5e1">netsim-router-lab: /bin/router-cli (Cisco IOS / Linux Mode)</text>
+
+  <!-- Terminal Screen Text -->
+  <text x="630" y="155" font-family="monospace" font-size="12" fill="#10b981">NetSim Router OS v3.4.1 (x86_64)</text>
+  <text x="630" y="173" font-family="monospace" font-size="12" fill="#64748b">Type 'help' for command list. Tab-completion enabled.</text>
+  
+  <text x="630" y="205" font-family="monospace" font-size="12" fill="#f8fafc">Router# <tspan fill="#38bdf8">show ip interface brief</tspan></text>
+  <text x="630" y="225" font-family="monospace" font-size="11" fill="#94a3b8">Interface    IP-Address       Status    Protocol</text>
+  <text x="630" y="243" font-family="monospace" font-size="11" fill="#cbd5e1">eth0 (WAN)   185.120.45.89    up        up (1000/Full)</text>
+  <text x="630" y="261" font-family="monospace" font-size="11" fill="#cbd5e1">eth1 (LAN1)  192.168.1.1      up        up (1000/Full)</text>
+  <text x="630" y="279" font-family="monospace" font-size="11" fill="#cbd5e1">wlan0 (2.4G) 192.168.1.1      up        up (802.11ax)</text>
+  <text x="630" y="297" font-family="monospace" font-size="11" fill="#cbd5e1">wlan1 (5G)   192.168.1.1      up        up (802.11ax)</text>
+
+  <text x="630" y="330" font-family="monospace" font-size="12" fill="#f8fafc">Router# <tspan fill="#38bdf8">ping -c 4 8.8.8.8</tspan></text>
+  <text x="630" y="350" font-family="monospace" font-size="11" fill="#94a3b8">PING 8.8.8.8 (8.8.8.8): 56 data bytes</text>
+  <text x="630" y="368" font-family="monospace" font-size="11" fill="#34d399">64 bytes from 8.8.8.8: icmp_seq=1 ttl=118 time=12.4 ms</text>
+  <text x="630" y="386" font-family="monospace" font-size="11" fill="#34d399">64 bytes from 8.8.8.8: icmp_seq=2 ttl=118 time=11.9 ms</text>
+  <text x="630" y="404" font-family="monospace" font-size="11" fill="#34d399">64 bytes from 8.8.8.8: icmp_seq=3 ttl=118 time=12.1 ms</text>
+  <text x="630" y="422" font-family="monospace" font-size="11" fill="#34d399">64 bytes from 8.8.8.8: icmp_seq=4 ttl=118 time=12.3 ms</text>
+  <text x="630" y="440" font-family="monospace" font-size="11" fill="#cbd5e1">--- 8.8.8.8 ping statistics --- 4 transmitted, 4 received, 0% packet loss</text>
+
+  <text x="630" y="475" font-family="monospace" font-size="12" fill="#f8fafc">Router# <tspan fill="#38bdf8">traceroute 1.1.1.1</tspan></text>
+  <text x="630" y="495" font-family="monospace" font-size="11" fill="#94a3b8">traceroute to 1.1.1.1 (1.1.1.1), 30 hops max</text>
+  <text x="630" y="513" font-family="monospace" font-size="11" fill="#cbd5e1"> 1  185.120.45.1 (isp-gw)  2.1 ms</text>
+  <text x="630" y="531" font-family="monospace" font-size="11" fill="#cbd5e1"> 2  10.240.12.8  (core-bcn) 4.5 ms</text>
+  <text x="630" y="549" font-family="monospace" font-size="11" fill="#cbd5e1"> 3  one.one.one.one (1.1.1.1) 8.2 ms [Target Reached]</text>
+
+  <text x="630" y="585" font-family="monospace" font-size="12" fill="#f8fafc">Router# <tspan fill="#38bdf8">iptables -L -n -v</tspan></text>
+  <text x="630" y="605" font-family="monospace" font-size="11" fill="#10b981">Chain FORWARD (policy DROP 34 packets, 2176 bytes)</text>
+  
+  <!-- Active prompt with blinking cursor -->
+  <text x="630" y="635" font-family="monospace" font-size="12" fill="#f8fafc">Router# <tspan fill="#10b981">█</tspan></text>
+</svg>

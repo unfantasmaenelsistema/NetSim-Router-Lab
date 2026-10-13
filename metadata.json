@@ -1,0 +1,6 @@
+{
+  "name": "NetSim Router Lab",
+  "description": "Simulador interactivo y didáctico de configuración de router doméstico con dispositivos virtuales, monitor en tiempo real y pruebas de ciberseguridad.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
